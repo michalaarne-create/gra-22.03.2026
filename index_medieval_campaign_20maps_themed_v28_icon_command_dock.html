@@ -1139,6 +1139,23 @@
       border-left-color: #ff957d;
     }
 
+    .overlayStars {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin: 15px 0;
+      font-size: 48px;
+      color: #ffd700;
+      text-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+    }
+    .star-pop {
+      display: inline-block;
+      animation: starPopIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+    }
+    @keyframes starPopIn {
+      0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+      100% { transform: scale(1) rotate(0); opacity: 1; }
+    }
     #overlayScreen {
       position: absolute;
       inset: 0;
@@ -4505,6 +4522,7 @@
           <div id="overlayScreen">
             <div class="overlayCard">
               <div id="overlayTitle" class="overlayTitle">Game Over</div>
+              <div id="overlayStars" class="overlayStars"></div>
               <div id="overlaySubtitle" class="overlaySubtitle"></div>
               <div class="overlayStats">
                 <div class="overlayStat">
@@ -9642,15 +9660,23 @@ render(ctx, time, buildMode) {
           const impactY = primaryTarget ? primaryTarget.cy : this.y;
 
           if (this.type === 'bullet') {
-            primaryTarget.takeDamage(this.damage, 'bullet');
+            const isCrit = Math.random() < (this.critChance || 0);
+            const dmg = isCrit ? this.damage * (this.critMult || 2) : this.damage;
+            primaryTarget.takeDamage(dmg, 'bullet');
+            if (isCrit) {
+              this.game.particles.addEffect(new FloatingText(impactX, impactY - 24, 'CRIT!', '#ff4500', 22, 1.0));
+              this.game.addShake(2);
+            }
             if (this.poisonDps && this.poisonDuration) {
               primaryTarget.applyPoison(this.poisonDps, this.poisonDuration);
+              this.game.particles.addEffect(new FloatingText(impactX, impactY - 20, 'Poison!', '#8fdf70', 14, 0.6));
               this.game.particles.spark(impactX, impactY, '#8fdf70', 3, 44);
             }
             this.game.particles.spark(impactX, impactY, '#fff3cf', 5, 110);
           } else if (this.type === 'ice') {
             primaryTarget.takeDamage(this.damage, 'ice');
             primaryTarget.applySlow(this.slowMultiplier, this.slowDuration);
+            this.game.particles.addEffect(new FloatingText(impactX, impactY - 20, 'Slow!', '#bdf6ff', 14, 0.6));
             if (this.brittleMult && this.brittleDuration) {
               primaryTarget.applyBrittle(this.brittleMult, this.brittleDuration);
             }
@@ -9994,6 +10020,75 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class AtmosphericSystem {
+        constructor(game) {
+          this.game = game;
+          this.clouds = [];
+          this.birds = [];
+          for (let i = 0; i < 14; i++) {
+            this.clouds.push({
+              x: Math.random() * MAP_WIDTH,
+              y: Math.random() * GAME_HEIGHT,
+              speed: 10 + Math.random() * 20,
+              scale: 1.4 + Math.random() * 2.8,
+              opacity: 0.03 + Math.random() * 0.05,
+              seed: Math.random() * 100
+            });
+          }
+        }
+        update(dt) {
+          this.clouds.forEach(c => {
+            c.x += c.speed * dt;
+            if (c.x > MAP_WIDTH + 600) {
+              c.x = -600;
+              c.y = Math.random() * GAME_HEIGHT;
+            }
+          });
+          if (Math.random() < 0.007) {
+            this.birds.push({
+              x: -60,
+              y: Math.random() * GAME_HEIGHT,
+              vx: 70 + Math.random() * 90,
+              vy: (Math.random() - 0.5) * 40,
+              size: 5 + Math.random() * 5,
+              flap: 0
+            });
+          }
+          this.birds.forEach(b => {
+            b.x += b.vx * dt;
+            b.y += b.vy * dt;
+            b.flap += dt * 18;
+          });
+          this.birds = this.birds.filter(b => b.x < MAP_WIDTH + 80);
+        }
+        drawClouds(ctx) {
+          ctx.save();
+          this.clouds.forEach(c => {
+            ctx.globalAlpha = c.opacity;
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.ellipse(c.x, c.y, 250 * c.scale, 110 * c.scale, 0, 0, TAU);
+            ctx.fill();
+          });
+          ctx.restore();
+        }
+        drawBirds(ctx) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+          ctx.lineWidth = 2.8;
+          ctx.lineCap = 'round';
+          this.birds.forEach(b => {
+            const f = Math.sin(b.flap) * b.size;
+            ctx.beginPath();
+            ctx.moveTo(b.x - b.size, b.y + f);
+            ctx.lineTo(b.x, b.y);
+            ctx.lineTo(b.x + b.size, b.y + f);
+            ctx.stroke();
+          });
+          ctx.restore();
+        }
+      }
+
       class ParticleSystem {
         constructor(game) {
           this.game = game;
@@ -10295,6 +10390,7 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawGunTower() {
+    const recoilDist = (tower.recoil || 0) * 12;
     // Liście (foliage) dla Gun Tower
     ctx.fillStyle = '#2d5a27';
     irregularBlobPath(ctx, 0, -10 * WORLD_SCALE, 35 * WORLD_SCALE, 45 * WORLD_SCALE, { roughness: 0.3, seed: tower.x });
@@ -10313,20 +10409,27 @@ function drawTowerModel(ctx, tower, options = {}) {
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(10 * WORLD_SCALE, -6 * WORLD_SCALE);
-    ctx.lineTo(38 * WORLD_SCALE - recoil, -22 * WORLD_SCALE);
+    ctx.lineTo((38 * WORLD_SCALE - recoil) - recoilDist, -22 * WORLD_SCALE);
     ctx.moveTo(10 * WORLD_SCALE, 6 * WORLD_SCALE);
-    ctx.lineTo(38 * WORLD_SCALE - recoil, 22 * WORLD_SCALE);
+    ctx.lineTo((38 * WORLD_SCALE - recoil) - recoilDist, 22 * WORLD_SCALE);
     ctx.stroke();
     ctx.fillStyle = metalLight;
-    roundRectPath(ctx, -8 * WORLD_SCALE, -4 * WORLD_SCALE, 42 * WORLD_SCALE - recoil, 8 * WORLD_SCALE, 4 * WORLD_SCALE);
+    roundRectPath(ctx, -8 * WORLD_SCALE, -4 * WORLD_SCALE, (42 * WORLD_SCALE - recoil) - recoilDist, 8 * WORLD_SCALE, 4 * WORLD_SCALE);
     ctx.fill();
     ctx.fillStyle = accent;
     ctx.beginPath();
-    ctx.moveTo(40 * WORLD_SCALE - recoil, 0);
-    ctx.lineTo(25 * WORLD_SCALE - recoil, -6 * WORLD_SCALE);
-    ctx.lineTo(25 * WORLD_SCALE - recoil, 6 * WORLD_SCALE);
+    ctx.moveTo((40 * WORLD_SCALE - recoil) - recoilDist, 0);
+    ctx.lineTo((25 * WORLD_SCALE - recoil) - recoilDist, -6 * WORLD_SCALE);
+    ctx.lineTo((25 * WORLD_SCALE - recoil) - recoilDist, 6 * WORLD_SCALE);
     ctx.closePath();
     ctx.fill();
+
+    if (tower.muzzleFlash > 0) {
+      ctx.fillStyle = `rgba(255, 200, 50, ${tower.muzzleFlash})`;
+      ctx.beginPath();
+      ctx.arc(44 * WORLD_SCALE, 0, 10 * tower.muzzleFlash, 0, TAU);
+      ctx.fill();
+    }
     ctx.fillStyle = woodLight;
     ctx.beginPath();
     ctx.arc(-18 * WORLD_SCALE, 14 * WORLD_SCALE, 7 * WORLD_SCALE, 0, TAU);
@@ -10375,6 +10478,7 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawCannonTower() {
+    const recoilDist = (tower.recoil || 0) * 18;
     // Liście (foliage) dla Cannon Tower
     ctx.fillStyle = '#4a6d2f';
     irregularBlobPath(ctx, 0, -5 * WORLD_SCALE, 42 * WORLD_SCALE, 38 * WORLD_SCALE, { roughness: 0.35, seed: tower.y });
@@ -10449,6 +10553,7 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawIceTower() {
+    const recoilDist = (tower.recoil || 0) * 6;
     // Liście (foliage) dla Ice Tower - krystaliczne/oszronione
     ctx.fillStyle = '#a0d8ef';
     irregularBlobPath(ctx, 0, -8 * WORLD_SCALE, 32 * WORLD_SCALE, 38 * WORLD_SCALE, { roughness: 0.25, seed: tower.x });
@@ -11375,7 +11480,8 @@ class WaveManager {
             btnOverlayNext: document.getElementById('btnOverlayNext'),
             btnOverlayMap: document.getElementById('btnOverlayMap'),
             btnOverlayShop: document.getElementById('btnOverlayShop'),
-            btnOverlayRestart: document.getElementById('btnOverlayRestart')
+            btnOverlayRestart: document.getElementById('btnOverlayRestart'),
+            overlayStars: document.getElementById('overlayStars')
           };
           this.bannerTimer = null;
           this.bestiaryRenderKey = '';
@@ -12481,6 +12587,22 @@ class WaveManager {
         showLevelCompleteScreen(level, nextLevel, pendingEvent = null) {
           this.refs.overlayScreen.classList.add('show');
           this.refs.overlayTitle.textContent = `Poziom ${level} ukończony`;
+
+          const lives = this.game.lives;
+          let starsCount = 1;
+          if (lives >= 18) starsCount = 3;
+          else if (lives >= 10) starsCount = 2;
+
+          this.refs.overlayStars.innerHTML = '';
+          for (let i = 0; i < 3; i++) {
+            const star = document.createElement('span');
+            star.textContent = i < starsCount ? '★' : '☆';
+            if (i < starsCount) {
+               star.className = 'star-pop';
+               star.style.animationDelay = `${i * 0.15}s`;
+            }
+            this.refs.overlayStars.appendChild(star);
+          }
           this.refs.overlaySubtitle.textContent = pendingEvent
             ? `Między bitwami czeka ${pendingEvent.title}. Potem zdecydujesz, jak wejść na poziom ${nextLevel}.`
             : `Front oczyszczony. Kolejny sztandar prowadzi na poziom ${nextLevel}.`;
@@ -12741,6 +12863,7 @@ update(force = false) {
           this.highScore = this.loadHighScore();
           this.map = new GameMap(this);
           this.particles = new ParticleSystem(this);
+          this.atmosphere = new AtmosphericSystem(this);
           this.waveManager = new WaveManager(this);
           this.ui = new UIManager(this);
           this.input = new InputHandler(this);
@@ -13167,6 +13290,7 @@ loop(time) {
             this.groundEffects[i].update(dt);
           }
           this.particles.update(dt);
+          this.atmosphere.update(dt);
 
           this.enemies = this.enemies.filter((enemy) => !enemy.dead);
           this.projectiles = this.projectiles.filter((projectile) => !projectile.dead);
@@ -13205,6 +13329,7 @@ loop(time) {
           ctx.translate(-this.camera.x, -this.camera.y);
 
           this.map.render(ctx, this.time, this.buildMode);
+          this.atmosphere.drawClouds(ctx);
 
           for (let i = 0; i < this.groundEffects.length; i += 1) {
             this.groundEffects[i].draw(ctx);
@@ -13249,6 +13374,7 @@ loop(time) {
           }
 
           this.particles.draw(ctx);
+          this.atmosphere.drawBirds(ctx);
 
           if (this.paused && this.state === 'playing') {
             ctx.fillStyle = 'rgba(22,12,6,0.34)';
@@ -13528,7 +13654,8 @@ loop(time) {
           const reward = Math.round(enemy.reward * (buffs.goldMult || 1));
           this.gold += reward;
           this.score += enemy.score;
-          this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 18, `+${reward}`, '#ffd56a', 18, 0.8));
+          this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 18, `+${reward} gold`, '#ffd56a', 18, 0.8));
+          this.particles.addEffect(new FloatingText(enemy.cx + 20, enemy.cy - 34, `+${enemy.score} XP`, '#aaffff', 14, 0.7));
 
           if (Math.random() < (buffs.lifeSteal || 0)) {
             this.lives = Math.min(this.maxLives || 20, this.lives + 1);
@@ -13617,29 +13744,38 @@ loop(time) {
           if (!skill || skill.currentCd > 0) return;
 
           if (skill.id === 'meteor') {
-            this.particles.explosion(x, y, '#ff6a00', 45, 180);
-            this.flashScreen('rgba(255,100,0,0.2)', 0.3);
-            this.addShake(12);
-            this.enemies.forEach(enemy => {
-              if (!enemy.dead && distance(x, y, enemy.cx, enemy.cy) <= 120) {
-                enemy.takeDamage(500, 'burn');
-              }
-            });
-            this.ui.showToast('Deszcz Ognia spadł na wrogów!', 'info');
+            // Antycypacja: Celownik i cień
+            this.particles.addEffect(new RingEffect(x, y, 4, 120, '#ff4500', 0.8, 0.8));
+            this.ui.showToast('Meteor nadlatuje...', 'warn');
+
+            setTimeout(() => {
+              if (this.paused) return; // Proste zabezpieczenie
+              this.particles.explosion(x, y, '#ff6a00', 50, 200);
+              this.flashScreen('rgba(255,80,0,0.4)', 0.4);
+              this.addShake(18);
+              this.enemies.forEach(enemy => {
+                if (!enemy.dead && distance(x, y, enemy.cx, enemy.cy) <= 130) {
+                  enemy.takeDamage(600, 'burn');
+                }
+              });
+              this.ui.showToast('Deszcz Ognia!', 'info');
+            }, 800);
           } else if (skill.id === 'militia') {
-            this.flashScreen('rgba(200,200,200,0.1)', 0.15);
-            this.addShake(3);
+            this.ui.showToast('Wysyłanie posiłków...', 'info');
             for (let i = 0; i < 3; i += 1) {
-              const ox = (i - 1) * 25;
-              this.particles.spawnEnemy(x + ox, y, '#aaa'); // Visual feedback
-              this.particles.addEffect(new RingEffect(x + ox, y, 4, 30, '#fff', 0.2, 0.4));
+              const ox = (i - 1) * 30;
+              setTimeout(() => {
+                this.flashScreen('rgba(255,255,255,0.1)', 0.1);
+                this.addShake(4);
+                this.particles.spawnEnemy(x + ox, y, '#fff');
+                this.particles.addEffect(new RingEffect(x + ox, y, 6, 40, '#fff', 0.3, 0.4));
+                this.enemies.forEach(enemy => {
+                  if (!enemy.dead && distance(x + ox, y, enemy.cx, enemy.cy) <= 60) {
+                    enemy.applySlow(0.2, 5.0);
+                  }
+                });
+              }, i * 200);
             }
-            this.enemies.forEach(enemy => {
-              if (!enemy.dead && distance(x, y, enemy.cx, enemy.cy) <= 80) {
-                enemy.applySlow(0.2, 4.0);
-              }
-            });
-            this.ui.showToast('Straż Przednia melduje się!', 'info');
           }
 
           skill.currentCd = skill.cdWaves;
@@ -14940,6 +15076,8 @@ loop(time) {
         if (!Object.prototype.hasOwnProperty.call(tower, 'chainSuppressedTimer')) tower.chainSuppressedTimer = 0;
         if (!Object.prototype.hasOwnProperty.call(tower, 'slowFireTimer')) tower.slowFireTimer = 0;
         if (!Object.prototype.hasOwnProperty.call(tower, 'rotationJerk')) tower.rotationJerk = 0;
+        if (!Object.prototype.hasOwnProperty.call(tower, 'recoil')) tower.recoil = 0;
+        if (!Object.prototype.hasOwnProperty.call(tower, 'muzzleFlash')) tower.muzzleFlash = 0;
       }
 
       function getTowerMaxLevel(tower) {
@@ -15571,6 +15709,8 @@ loop(time) {
       Tower.prototype.update = function updatePack(dt) {
         ensureTowerPackState(this);
         this.flash = Math.max(0, this.flash - dt * 3.6);
+        this.recoil = Math.max(0, this.recoil - dt * 10);
+        this.muzzleFlash = Math.max(0, this.muzzleFlash - dt * 15);
 
         // Klimatyczny efekt spadających liści dla wież-drzew
         if (Math.random() < 0.008 && this.game.state === 'playing' && !this.game.paused) {
@@ -15617,6 +15757,8 @@ loop(time) {
 
       Tower.prototype.fire = function firePack(target) {
         this.flash = 1;
+        this.recoil = 1.0;
+        this.muzzleFlash = 1.0;
         const stats = this.stats;
         const relics = this.game.relicState || {};
 
