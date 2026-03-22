@@ -4121,6 +4121,108 @@
       width: 296px !important;
       min-height: 122px !important;
     }
+    #skillDock {
+      position: absolute !important;
+      left: 20px !important;
+      bottom: 155px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 12px !important;
+      z-index: 1000 !important;
+      pointer-events: auto !important;
+      background: rgba(0,0,0,0.2) !important;
+      padding: 10px !important;
+      border-radius: 20px !important;
+    }
+    .skillBtn {
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(43, 28, 18, 0.97), rgba(20, 13, 9, 0.985));
+      border: 1px solid var(--line-soft);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      font-size: 24px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.24);
+    }
+    .skillBtn:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+    .skillBtn.active { border-color: #fa0; box-shadow: 0 0 15px rgba(255,170,0,0.4); }
+    .skillBtn .cooldownOverlay {
+      position: absolute;
+      left: 0; bottom: 0; right: 0;
+      background: rgba(0,0,0,0.6);
+      height: var(--cd-height, 0%);
+      transition: height 0.3s;
+    }
+    .skillBtn .cooldownText {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 2px 4px #000;
+    }
+
+    #inventoryPanel {
+      position: absolute !important;
+      right: 18px !important;
+      top: 632px !important;
+      width: 296px !important;
+      max-height: 250px !important;
+      background: linear-gradient(180deg, rgba(39, 26, 18, 0.86), rgba(17, 12, 8, 0.90)), radial-gradient(circle at 18% 0%, rgba(255, 214, 145, 0.10), transparent 40%) !important;
+      backdrop-filter: blur(8px) saturate(1.05) !important;
+      border: 1px solid var(--line-soft) !important;
+      border-radius: 24px !important;
+      padding: 14px !important;
+      z-index: 4 !important;
+      pointer-events: auto !important;
+      overflow-y: auto;
+    }
+    .inventoryGrid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .inventoryItem {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      font-size: 18px;
+      position: relative;
+    }
+    .inventoryItem:hover { background: rgba(255,255,255,0.12); }
+    .inventoryItem.rarity-common { border-color: #ccc; }
+    .inventoryItem.rarity-rare { border-color: #44f; }
+    .inventoryItem.rarity-epic { border-color: #a4a; }
+    .inventoryItem.rarity-legendary { border-color: #fa0; }
+
+    .equipmentSlots {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .equipSlot {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.3);
+      border: 1px dashed rgba(255,255,255,0.2);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .equipSlot.filled { border-style: solid; background: rgba(255,255,255,0.08); }
+
     #selectedInfo {
       min-height: 248px !important;
     }
@@ -4297,6 +4399,7 @@
             <div id="campaignNodes"></div>
           </div>
 
+          <div id="skillDock"></div>
           <div id="sidebar">
             <div class="panel" id="controlsPanel" aria-label="Szybkie sterowanie">
               <div class="commandDock">
@@ -4322,6 +4425,16 @@
                 <button id="btnUpgrade" class="smallBtn primary" type="button">Ulepsz</button>
                 <button id="btnSell" class="smallBtn danger" type="button">Sprzedaj</button>
               </div>
+            </div>
+
+            <div id="inventoryPanel">
+              <div class="panelTitle">Ekwipunek Bohatera</div>
+              <div class="equipmentSlots">
+                <div class="equipSlot" data-slot="0" title="Slot 1"></div>
+                <div class="equipSlot" data-slot="1" title="Slot 2"></div>
+                <div class="equipSlot" data-slot="2" title="Slot 3"></div>
+              </div>
+              <div class="inventoryGrid" id="inventoryGrid"></div>
             </div>
 
             <div class="panel" id="mapPanel">
@@ -5136,6 +5249,15 @@
       ];
 
       const RELIC_DRAFT_LEVELS = new Set([2, 4, 7, 10, 13, 16, 18]);
+
+      const EQUIPMENT_LIBRARY = [
+        { id: 'iron_spikes', name: 'Żelazne Kolce', desc: 'Wieże zadają +10% obrażeń fizycznych.', rarity: 'common', buffs: { damageMult: 1.1 } },
+        { id: 'farsight_glass', name: 'Luneta Dalekowidza', desc: 'Zwiększa zasięg wszystkich wież o 15%.', rarity: 'common', buffs: { rangeMult: 1.15 } },
+        { id: 'gold_magnet', name: 'Złoty Magnes', desc: 'Zwiększa ilość zdobywanego złota o 12%.', rarity: 'rare', buffs: { goldMult: 1.12 } },
+        { id: 'vampiric_edge', name: 'Wampiryczne Ostrze', desc: 'Wieże mają 5% szans na odzyskanie 1 życia przy zabiciu wroga.', rarity: 'rare', buffs: { lifeSteal: 0.05 } },
+        { id: 'ancient_tome', name: 'Starożytna Księga', desc: 'Skraca czas odnowienia specjalnych skilli o 1 falę.', rarity: 'epic', buffs: { skillCdReduction: 1 } },
+        { id: 'kings_seal', name: 'Królewska Pieczęć', desc: 'Zwiększa obrażenia wież o 25% i zasięg o 10%.', rarity: 'legendary', buffs: { damageMult: 1.25, rangeMult: 1.1 } }
+      ];
 
       function createEmptyRelicState() {
         return {
@@ -9923,6 +10045,22 @@ render(ctx, time, buildMode) {
           this.addEffect(new RingEffect(x, y, 8, radius, color, 0.35, 0.45));
         }
 
+        leaf(x, y, color = '#3d5a27') {
+          const angle = Math.PI * 0.5 + (Math.random() - 0.5) * 0.5;
+          const speed = 15 + Math.random() * 25;
+          this.particles.push(new Particle(
+            x + (Math.random() - 0.5) * 30,
+            y - 40 + (Math.random() - 0.5) * 20,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed,
+            rand(2, 4),
+            color,
+            rand(1.5, 3.0),
+            15, // Mała grawitacja dla liści
+            'circle'
+          ));
+        }
+
         enemyDeath(enemy) {
           const color = enemy.typeKey === 'boss' ? '#ffb88e' : enemy.base.color;
           this.explosion(enemy.cx, enemy.cy, color, enemy.typeKey === 'boss' ? 34 : 10, enemy.typeKey === 'boss' ? 120 : 44);
@@ -10063,9 +10201,9 @@ function drawTowerModel(ctx, tower, options = {}) {
     ctx.ellipse(0, pedestalHeight + 12 * WORLD_SCALE, platformRadius * 2.0, platformRadius * 0.8, 0, 0, TAU);
     ctx.fill();
 
+    // Organic stone base
     ctx.fillStyle = stoneDark;
-    ctx.beginPath();
-    ctx.ellipse(0, 6 * WORLD_SCALE, platformRadius * 1.18, platformRadius * 0.9, 0, 0, TAU);
+    irregularBlobPath(ctx, 0, 6 * WORLD_SCALE, platformRadius * 1.18, platformRadius * 0.9, { roughness: 0.12, seed: tower.x + tower.y });
     ctx.fill();
 
     const shaft = ctx.createLinearGradient(0, -6, 0, pedestalHeight + 28 * WORLD_SCALE);
@@ -10073,13 +10211,23 @@ function drawTowerModel(ctx, tower, options = {}) {
     shaft.addColorStop(0.24, stoneMid);
     shaft.addColorStop(1, stoneDark);
     ctx.fillStyle = shaft;
+
+    // Painterly tower body
     ctx.beginPath();
-    ctx.moveTo(-platformRadius * 1.05, 4 * WORLD_SCALE);
-    ctx.lineTo(platformRadius * 1.05, 4 * WORLD_SCALE);
-    ctx.lineTo(platformRadius * 0.8, pedestalHeight + 22 * WORLD_SCALE);
-    ctx.lineTo(-platformRadius * 0.8, pedestalHeight + 22 * WORLD_SCALE);
-    ctx.closePath();
+    irregularBlobPath(ctx, 0, pedestalHeight * 0.5 + 10 * WORLD_SCALE, platformRadius * 0.9, pedestalHeight * 0.5 + 12 * WORLD_SCALE, {
+      roughness: 0.1,
+      seed: tower.x,
+      steps: 12,
+      waveA: 2, waveB: 4
+    });
     ctx.fill();
+
+    // Moss details
+    if (!ghost) {
+      ctx.fillStyle = '#4a5d23';
+      irregularBlobPath(ctx, -platformRadius * 0.6, pedestalHeight * 0.8, platformRadius * 0.3, platformRadius * 0.2, { roughness: 0.2, seed: tower.y });
+      ctx.fill();
+    }
 
     const bevel = ctx.createLinearGradient(-platformRadius, 0, platformRadius, 0);
     bevel.addColorStop(0, hexToRgba(accent, ghost ? 0.1 : 0.22));
@@ -10087,11 +10235,7 @@ function drawTowerModel(ctx, tower, options = {}) {
     bevel.addColorStop(1, hexToRgba(baseColor, ghost ? 0.08 : 0.16));
     ctx.fillStyle = bevel;
     ctx.beginPath();
-    ctx.moveTo(-platformRadius * 1.05, 4 * WORLD_SCALE);
-    ctx.lineTo(platformRadius * 1.05, 4 * WORLD_SCALE);
-    ctx.lineTo(platformRadius * 0.7, pedestalHeight + 10 * WORLD_SCALE);
-    ctx.lineTo(-platformRadius * 0.7, pedestalHeight + 10 * WORLD_SCALE);
-    ctx.closePath();
+    irregularBlobPath(ctx, 0, pedestalHeight * 0.4 + 4 * WORLD_SCALE, platformRadius * 0.7, pedestalHeight * 0.4, { roughness: 0.08, seed: tower.x + 1 });
     ctx.fill();
 
     for (const side of [-1, 1]) {
@@ -10151,11 +10295,15 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawGunTower() {
+    // Liście (foliage) dla Gun Tower
+    ctx.fillStyle = '#2d5a27';
+    irregularBlobPath(ctx, 0, -10 * WORLD_SCALE, 35 * WORLD_SCALE, 45 * WORLD_SCALE, { roughness: 0.3, seed: tower.x });
+    ctx.fill();
     ctx.fillStyle = woodDark;
-    roundRectPath(ctx, -24 * WORLD_SCALE, -14 * WORLD_SCALE, 28 * WORLD_SCALE, 28 * WORLD_SCALE, 8 * WORLD_SCALE);
+    irregularBlobPath(ctx, -10 * WORLD_SCALE, 0, 16 * WORLD_SCALE, 16 * WORLD_SCALE, { roughness: 0.15, seed: tower.x });
     ctx.fill();
     ctx.fillStyle = woodMid;
-    roundRectPath(ctx, -8 * WORLD_SCALE, -7 * WORLD_SCALE, 40 * WORLD_SCALE, 14 * WORLD_SCALE, 5 * WORLD_SCALE);
+    irregularBlobPath(ctx, 12 * WORLD_SCALE, 0, 22 * WORLD_SCALE, 9 * WORLD_SCALE, { roughness: 0.12, seed: tower.y });
     ctx.fill();
     ctx.fillStyle = metalDark;
     ctx.beginPath();
@@ -10227,11 +10375,15 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawCannonTower() {
+    // Liście (foliage) dla Cannon Tower
+    ctx.fillStyle = '#4a6d2f';
+    irregularBlobPath(ctx, 0, -5 * WORLD_SCALE, 42 * WORLD_SCALE, 38 * WORLD_SCALE, { roughness: 0.35, seed: tower.y });
+    ctx.fill();
     ctx.fillStyle = woodDark;
-    roundRectPath(ctx, -26 * WORLD_SCALE, -16 * WORLD_SCALE, 28 * WORLD_SCALE, 32 * WORLD_SCALE, 7 * WORLD_SCALE);
+    irregularBlobPath(ctx, -12 * WORLD_SCALE, 0, 16 * WORLD_SCALE, 18 * WORLD_SCALE, { roughness: 0.18, seed: tower.x });
     ctx.fill();
     ctx.fillStyle = woodMid;
-    roundRectPath(ctx, -20 * WORLD_SCALE, -12 * WORLD_SCALE, 16 * WORLD_SCALE, 24 * WORLD_SCALE, 5 * WORLD_SCALE);
+    irregularBlobPath(ctx, -12 * WORLD_SCALE, 0, 10 * WORLD_SCALE, 14 * WORLD_SCALE, { roughness: 0.14, seed: tower.y });
     ctx.fill();
     ctx.fillStyle = woodLight;
     ctx.beginPath();
@@ -10297,8 +10449,12 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawIceTower() {
+    // Liście (foliage) dla Ice Tower - krystaliczne/oszronione
+    ctx.fillStyle = '#a0d8ef';
+    irregularBlobPath(ctx, 0, -8 * WORLD_SCALE, 32 * WORLD_SCALE, 38 * WORLD_SCALE, { roughness: 0.25, seed: tower.x });
+    ctx.fill();
     ctx.fillStyle = stoneDark;
-    drawPolygon(ctx, 6, 18 * WORLD_SCALE, Math.PI / 6);
+    irregularBlobPath(ctx, 0, 0, 18 * WORLD_SCALE, 18 * WORLD_SCALE, { roughness: 0.1, seed: tower.x });
     ctx.fill();
     const crystalGrad = ctx.createLinearGradient(0, -34 * WORLD_SCALE, 0, 22 * WORLD_SCALE);
     crystalGrad.addColorStop(0, '#ffffff');
@@ -10372,8 +10528,12 @@ function drawTowerModel(ctx, tower, options = {}) {
   }
 
   function drawLaserTower() {
+    // Liście (foliage) dla Laser Tower - magiczne/mroczne
+    ctx.fillStyle = '#4b0082';
+    irregularBlobPath(ctx, 0, -12 * WORLD_SCALE, 36 * WORLD_SCALE, 42 * WORLD_SCALE, { roughness: 0.3, seed: tower.y });
+    ctx.fill();
     ctx.fillStyle = metalDark;
-    drawPolygon(ctx, 8, 17 * WORLD_SCALE, Math.PI / 8);
+    irregularBlobPath(ctx, 0, 0, 17 * WORLD_SCALE, 17 * WORLD_SCALE, { roughness: 0.12, seed: tower.x });
     ctx.fill();
     ctx.fillStyle = hexToRgba(baseColor, ghost ? 0.28 : 0.54);
     roundRectPath(ctx, -18 * WORLD_SCALE, -10 * WORLD_SCALE, 26 * WORLD_SCALE, 20 * WORLD_SCALE, 7 * WORLD_SCALE);
@@ -10462,7 +10622,14 @@ class Tower {
         }
 
         get stats() {
-          return this.config.levels[this.level - 1];
+          const base = this.config.levels[this.level - 1];
+          const buffs = this.game.getEquipmentBuffs();
+          return {
+            ...base,
+            damage: base.damage * (buffs.damageMult || 1),
+            range: base.range * (buffs.rangeMult || 1),
+            fireRate: base.fireRate * (buffs.fireRateMult || 1)
+          };
         }
 
         getUpgradeCost() {
@@ -10954,6 +11121,14 @@ class WaveManager {
       this.game.flashScreen('rgba(255,124,96,0.14)', 0.14);
       this.game.addShake(3.2);
     }
+
+    // Skill cooldown reduction
+    const buffs = this.game.getEquipmentBuffs();
+    const reduction = 1 + (buffs.skillCdReduction || 0);
+    this.game.activeSkills.forEach(skill => {
+      skill.currentCd = Math.max(0, skill.currentCd - reduction);
+    });
+
     this.game.ui.update(true);
     return true;
   }
@@ -11189,6 +11364,9 @@ class WaveManager {
             btnCloseMap: document.getElementById('btnCloseMap'),
             overlayScreen: document.getElementById('overlayScreen'),
             overlayTitle: document.getElementById('overlayTitle'),
+            inventoryGrid: document.getElementById('inventoryGrid'),
+            equipSlots: document.querySelectorAll('.equipSlot'),
+            skillDock: document.getElementById('skillDock'),
             overlaySubtitle: document.getElementById('overlaySubtitle'),
             overlayScore: document.getElementById('overlayScore'),
             overlayWave: document.getElementById('overlayWave'),
@@ -12531,6 +12709,8 @@ update(force = false) {
 
   this.updateSelectedTower();
   this.updateViewControls();
+  this.updateInventoryUI();
+  this.updateSkillUI();
 
           this.updateBossBar();
           this.updateCampaign();
@@ -12567,9 +12747,16 @@ update(force = false) {
           this.towers = [];
           this.enemies = [];
           this.projectiles = [];
+          this.activeSkills = [
+            { id: 'meteor', name: 'Deszcz Ognia', desc: 'Meteor uderza w wybrany punkt.', icon: '☄', cdWaves: 3, currentCd: 0 },
+            { id: 'militia', name: 'Straż Przednia', desc: 'Przywołaj 3 strażników na ścieżkę.', icon: '🛡', cdWaves: 5, currentCd: 0 }
+          ];
+          this.inventory = [];
+          this.equipment = [null, null, null]; // 3 equipment slots
           this.selectedTower = null;
           this.hoveredTower = null;
           this.buildMode = null;
+          this.activeSkillMode = null;
 
           this.autoStart = false;
           this.selectedLevel = 1;
@@ -13140,19 +13327,25 @@ loop(time) {
 
         getTowerCost(typeKey) {
           const baseCost = TOWER_TYPES[typeKey]?.levels?.[0]?.cost || 0;
+          let cost = baseCost;
           if ((this.routeEffects?.towerDiscountCharges || 0) > 0) {
-            return Math.max(1, Math.round(baseCost * (this.routeEffects.towerDiscountMult || 1)));
+            cost = Math.round(cost * (this.routeEffects.towerDiscountMult || 1));
           }
-          return baseCost;
+          const buffs = this.getEquipmentBuffs();
+          if (buffs.costMult) cost = Math.round(cost * buffs.costMult);
+          return Math.max(1, cost);
         }
 
         getTowerUpgradeCost(tower) {
           const baseCost = tower?.stats?.upgradeCost ?? null;
           if (!baseCost) return null;
+          let cost = baseCost;
           if ((this.routeEffects?.towerDiscountCharges || 0) > 0) {
-            return Math.max(1, Math.round(baseCost * (this.routeEffects.towerDiscountMult || 1)));
+            cost = Math.round(cost * (this.routeEffects.towerDiscountMult || 1));
           }
-          return baseCost;
+          const buffs = this.getEquipmentBuffs();
+          if (buffs.costMult) cost = Math.round(cost * buffs.costMult);
+          return Math.max(1, cost);
         }
 
         consumeDiscountCharge() {
@@ -13183,6 +13376,12 @@ loop(time) {
         handleMapClick(x, y) {
           if (this.state !== 'playing' || this.paused) return;
           if (x >= MAP_WIDTH || y < 0 || y > GAME_HEIGHT) return;
+
+          if (this.activeSkillMode) {
+            this.activateSkillAt(x, y);
+            return;
+          }
+
           if (this.buildMode) {
             this.tryPlaceTower(x, y);
             return;
@@ -13325,13 +13524,26 @@ loop(time) {
         }
 
         onEnemyKilled(enemy) {
-          this.gold += enemy.reward;
+          const buffs = this.getEquipmentBuffs();
+          const reward = Math.round(enemy.reward * (buffs.goldMult || 1));
+          this.gold += reward;
           this.score += enemy.score;
-          this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 18, `+${enemy.reward}`, '#ffd56a', 18, 0.8));
+          this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 18, `+${reward}`, '#ffd56a', 18, 0.8));
+
+          if (Math.random() < (buffs.lifeSteal || 0)) {
+            this.lives = Math.min(this.maxLives || 20, this.lives + 1);
+            this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 36, `+1 ❤`, '#ff9fab', 18, 0.9));
+          }
+
           if (enemy instanceof BossEnemy) {
-            this.ui.showToast(`Boss pokonany! +${enemy.reward} gold.`, 'info', 3.0);
+            this.ui.showToast(`Boss pokonany! +${reward} gold.`, 'info', 3.0);
             this.flashScreen('rgba(255,220,160,0.12)', 0.12);
             this.addShake(6);
+
+            // Boss loot drop
+            const loot = EQUIPMENT_LIBRARY[Math.floor(Math.random() * EQUIPMENT_LIBRARY.length)];
+            this.inventory.push({ ...loot, instanceId: Date.now() + Math.random() });
+            this.ui.showToast(`Zdobyto łup: ${loot.name}! Sprawdź ekwipunek.`, 'boss', 4.0);
           }
         }
 
@@ -13360,6 +13572,152 @@ loop(time) {
 
         getActiveBoss() {
           return this.enemies.find((enemy) => enemy instanceof BossEnemy && !enemy.dead) || null;
+        }
+
+        equipItem(inventoryIndex, slotIndex) {
+          if (this.state !== 'playing' && this.state !== 'ready') return;
+          const item = this.inventory[inventoryIndex];
+          if (!item) return;
+          const oldItem = this.equipment[slotIndex];
+          this.equipment[slotIndex] = item;
+          this.inventory.splice(inventoryIndex, 1);
+          if (oldItem) this.inventory.push(oldItem);
+          this.ui.showToast(`Ekwipunek: Założono ${item.name}`, 'info');
+          this.ui.update(true);
+        }
+
+        unequipItem(slotIndex) {
+          if (this.state !== 'playing' && this.state !== 'ready') return;
+          const item = this.equipment[slotIndex];
+          if (!item) return;
+          this.equipment[slotIndex] = null;
+          this.inventory.push(item);
+          this.ui.showToast(`Ekwipunek: Zdjęto ${item.name}`, 'info');
+          this.ui.update(true);
+        }
+
+        getEquipmentBuffs() {
+          const totals = {};
+          this.equipment.forEach(item => {
+            if (item && item.buffs) {
+              Object.entries(item.buffs).forEach(([key, val]) => {
+                if (key.endsWith('Mult')) {
+                  totals[key] = (totals[key] || 1) * val;
+                } else {
+                  totals[key] = (totals[key] || 0) + val;
+                }
+              });
+            }
+          });
+          return totals;
+        }
+
+        activateSkillAt(x, y) {
+          const skill = this.activeSkills.find(s => s.id === this.activeSkillMode);
+          if (!skill || skill.currentCd > 0) return;
+
+          if (skill.id === 'meteor') {
+            this.particles.explosion(x, y, '#ff6a00', 45, 180);
+            this.flashScreen('rgba(255,100,0,0.2)', 0.3);
+            this.addShake(12);
+            this.enemies.forEach(enemy => {
+              if (!enemy.dead && distance(x, y, enemy.cx, enemy.cy) <= 120) {
+                enemy.takeDamage(500, 'burn');
+              }
+            });
+            this.ui.showToast('Deszcz Ognia spadł na wrogów!', 'info');
+          } else if (skill.id === 'militia') {
+            this.flashScreen('rgba(200,200,200,0.1)', 0.15);
+            this.addShake(3);
+            for (let i = 0; i < 3; i += 1) {
+              const ox = (i - 1) * 25;
+              this.particles.spawnEnemy(x + ox, y, '#aaa'); // Visual feedback
+              this.particles.addEffect(new RingEffect(x + ox, y, 4, 30, '#fff', 0.2, 0.4));
+            }
+            this.enemies.forEach(enemy => {
+              if (!enemy.dead && distance(x, y, enemy.cx, enemy.cy) <= 80) {
+                enemy.applySlow(0.2, 4.0);
+              }
+            });
+            this.ui.showToast('Straż Przednia melduje się!', 'info');
+          }
+
+          skill.currentCd = skill.cdWaves;
+          this.activeSkillMode = null;
+          this.ui.update(true);
+        }
+
+        updateInventoryUI() {
+          const game = this.game;
+          this.refs.inventoryGrid.innerHTML = game.inventory.map((item, idx) => `
+            <div class="inventoryItem rarity-${item.rarity}"
+                 title="${item.name}: ${item.desc}"
+                 onclick="window.offlineTowerDefenseGame.ui.handleInventoryClick(${idx})">
+              ${this.getItemIcon(item.id)}
+            </div>
+          `).join('');
+
+          this.refs.equipSlots.forEach((slot, idx) => {
+            const item = game.equipment[idx];
+            slot.innerHTML = item ? this.getItemIcon(item.id) : '';
+            slot.className = `equipSlot ${item ? 'filled rarity-' + item.rarity : ''}`;
+            slot.title = item ? `${item.name}: ${item.desc} (Kliknij by zdjąć)` : 'Pusty slot';
+            slot.onclick = () => { if (item) game.unequipItem(idx); };
+          });
+        }
+
+        getItemIcon(id) {
+          const icons = {
+            iron_spikes: '⚔',
+            farsight_glass: '🔭',
+            gold_magnet: '🧲',
+            vampiric_edge: '🧛',
+            ancient_tome: '📖',
+            kings_seal: '👑'
+          };
+          return icons[id] || '📦';
+        }
+
+        handleInventoryClick(idx) {
+          const game = this.game;
+          const slotIdx = game.equipment.findIndex(s => s === null);
+          if (slotIdx !== -1) {
+            game.equipItem(idx, slotIdx);
+          } else {
+            this.showToast('Brak wolnych slotów w ekwipunku!', 'warn');
+          }
+        }
+
+        updateSkillUI() {
+          const game = this.game;
+          this.refs.skillDock.innerHTML = game.activeSkills.map(skill => {
+            const cdPercent = (skill.currentCd / skill.cdWaves) * 100;
+            const isActive = game.activeSkillMode === skill.id;
+            return `
+              <div class="skillBtn ${isActive ? 'active' : ''}"
+                   title="${skill.name}: ${skill.desc} (Co ${skill.cdWaves} fal)"
+                   onclick="window.offlineTowerDefenseGame.ui.handleSkillClick('${skill.id}')">
+                ${skill.icon}
+                <div class="cooldownOverlay" style="--cd-height: ${cdPercent}%"></div>
+                ${skill.currentCd > 0 ? `<div class="cooldownText">${skill.currentCd}</div>` : ''}
+              </div>
+            `;
+          }).join('');
+        }
+
+        handleSkillClick(id) {
+          const game = this.game;
+          const skill = game.activeSkills.find(s => s.id === id);
+          if (!skill || skill.currentCd > 0) return;
+
+          if (game.activeSkillMode === id) {
+            game.activeSkillMode = null;
+          } else {
+            game.activeSkillMode = id;
+            game.buildMode = null;
+            this.showToast(`Wybierz cel dla ${skill.name}`, 'info');
+          }
+          this.update(true);
         }
 
         winGame() {
@@ -14596,11 +14954,20 @@ loop(time) {
         configurable: true,
         get() {
           ensureTowerPackState(this);
+          let base;
           if (this.level <= 3 || !this.branch) {
-            return this.config.levels[Math.min(this.level - 1, 2)];
+            base = this.config.levels[Math.min(this.level - 1, 2)];
+          } else {
+            const branch = getTowerBranch(this);
+            base = branch?.levels[Math.min(this.level - 4, 1)] || this.config.levels[2];
           }
-          const branch = getTowerBranch(this);
-          return branch?.levels[Math.min(this.level - 4, 1)] || this.config.levels[2];
+          const buffs = this.game.getEquipmentBuffs();
+          return {
+            ...base,
+            damage: base.damage * (buffs.damageMult || 1),
+            range: base.range * (buffs.rangeMult || 1),
+            fireRate: base.fireRate * (buffs.fireRateMult || 1)
+          };
         }
       });
 
@@ -15112,7 +15479,10 @@ loop(time) {
           if (this.poisonDps && this.poisonDuration) primaryTarget.applyPoison(this.poisonDps, this.poisonDuration);
           if (this.bleedDps && this.bleedDuration) primaryTarget.applyBleed(this.bleedDps, this.bleedDuration);
           if (this.armorRend) primaryTarget.applyArmorRend(this.armorRend, 2.6);
-          this.game.particles.spark(impactX, impactY, this.styleColor || '#fff3cf', 5, 110);
+
+          // Enhanced impact juice
+          this.game.particles.spark(impactX, impactY, this.styleColor || '#fff3cf', 8, 140);
+          this.game.particles.addEffect(new RingEffect(impactX, impactY, 2, 18, '#fff', 0.1, 0.15));
         } else if (this.type === 'ice') {
           primaryTarget.takeDamage(this.damage, 'ice');
           primaryTarget.applySlow(this.slowMultiplier, this.slowDuration);
@@ -15171,8 +15541,9 @@ loop(time) {
               this.game.particles.spark(enemy.cx, enemy.cy, '#ffe0b4', 4, 70);
             });
           }
-          this.game.particles.explosion(impactX, impactY, '#ffc28e', 16, this.splash * 1.05);
-          this.game.addShake(2.6);
+          this.game.particles.explosion(impactX, impactY, '#ffc28e', 22, this.splash * 1.15);
+          this.game.flashScreen('rgba(255,200,100,0.05)', 0.08);
+          this.game.addShake(3.5);
         }
 
         this.dead = true;
@@ -15200,6 +15571,12 @@ loop(time) {
       Tower.prototype.update = function updatePack(dt) {
         ensureTowerPackState(this);
         this.flash = Math.max(0, this.flash - dt * 3.6);
+
+        // Klimatyczny efekt spadających liści dla wież-drzew
+        if (Math.random() < 0.008 && this.game.state === 'playing' && !this.game.paused) {
+          const colors = { gun: '#3d5a27', cannon: '#5d4a3e', ice: '#a0d8ef', laser: '#4b0082' };
+          this.game.particles.leaf(this.x, this.y, colors[this.typeKey] || '#3d5a27');
+        }
         this.cooldown -= dt;
         this.chainSuppressedTimer = Math.max(0, this.chainSuppressedTimer - dt);
         this.slowFireTimer = Math.max(0, this.slowFireTimer - dt);
