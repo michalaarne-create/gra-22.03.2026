@@ -306,9 +306,12 @@
       width: 100%;
       height: 100%;
       border-radius: inherit;
-      background: linear-gradient(90deg, #b13b2d, #df7842 48%, #ffd493);
+      background:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.1) 0, rgba(255,255,255,0.1) 10px, transparent 10px, transparent 20px),
+        linear-gradient(90deg, #b13b2d, #df7842 48%, #ffd493);
       box-shadow: 0 0 22px rgba(255, 180, 120, 0.35);
       transform-origin: left center;
+      filter: url(#rough-edges);
     }
 
 
@@ -1641,6 +1644,7 @@
         inset 0 -10px 16px rgba(0,0,0,0.24),
         0 8px 18px rgba(0,0,0,0.26);
       overflow: hidden;
+      filter: url(#ink-bleed);
     }
     .hud-emblem::before {
       content: '';
@@ -2126,6 +2130,7 @@
       position: relative; overflow: hidden; min-width: 540px;
       background: linear-gradient(180deg, rgba(62,39,19,0.96), rgba(26,16,8,0.98)), radial-gradient(circle at 50% -8%, rgba(255,220,168,0.16), transparent 36%);
       border-color: rgba(255,222,166,0.18);
+      filter: url(#rough-edges) url(#parchment-grain);
     }
     .overlayCard::before { content: ''; position: absolute; inset: 10px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.08); pointer-events: none; }
     .overlayButtons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
@@ -2261,6 +2266,7 @@
       border: 1px solid rgba(255, 216, 154, 0.10);
       box-shadow: 0 12px 28px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.05);
       backdrop-filter: blur(10px);
+      filter: url(#rough-edges) url(#parchment-grain);
     }
     .hud-label { font-size: 10px; letter-spacing: 1.5px; color: rgba(244,213,138,0.78); }
     .hud-value { margin-top: 4px; font-size: 24px; }
@@ -3765,6 +3771,7 @@
       z-index: 8 !important;
       background: linear-gradient(180deg, rgba(236, 220, 188, 0.98), rgba(209, 178, 120, 0.96)) !important;
       box-shadow: 0 18px 36px rgba(0,0,0,0.26) !important;
+      filter: url(#rough-edges) url(#parchment-grain);
     }
     #campaignRibbon {
       top: 18px !important;
@@ -3776,6 +3783,7 @@
       background: var(--glass-1), var(--glass-2) !important;
       border: 1px solid var(--line-soft) !important;
       box-shadow: 0 20px 42px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+      filter: url(#rough-edges) url(#parchment-grain);
     }
     #campaignRibbon::before {
       border-radius: 18px !important;
@@ -3809,6 +3817,7 @@
       background: var(--glass-1), var(--glass-2) !important;
       box-shadow: 0 18px 38px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.05) !important;
       overflow: hidden !important;
+      filter: url(#rough-edges) url(#parchment-grain);
     }
     #controlsPanel::before,
     #towerPanel::before,
@@ -3945,6 +3954,7 @@
       box-shadow: 0 22px 46px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06) !important;
       z-index: 5 !important;
       overflow: hidden !important;
+      filter: url(#rough-edges) url(#parchment-grain);
     }
     #shopPanel .panelTitle {
       margin-bottom: 8px !important;
@@ -4230,6 +4240,28 @@
 
 </head>
 <body>
+  <!-- SVG Filters for organic/painterly look -->
+  <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="rough-edges">
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" />
+      </filter>
+      <filter id="parchment-grain">
+        <feTurbulence type="fractalNoise" baseFrequency="0.4" numOctaves="4" result="noise" />
+        <feDiffuseLighting in="noise" lighting-color="#fff" surfaceScale="1">
+          <feDistantLight azimuth="45" elevation="60" />
+        </feDiffuseLighting>
+        <feComposite in2="SourceGraphic" operator="arithmetic" k1="0" k2="1" k3="0.2" k4="0" />
+      </filter>
+      <filter id="ink-bleed">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="0.4" result="blur" />
+        <feTurbulence type="fractalNoise" baseFrequency="0.1" numOctaves="2" result="noise" />
+        <feDisplacementMap in="blur" in2="noise" scale="1.5" />
+      </filter>
+    </defs>
+  </svg>
+
   <div id="viewport">
     <div id="gameScaleWrap">
       <div id="gameShell">
@@ -11424,12 +11456,12 @@ class WaveManager {
 
           const coastXAt = (y) => 44 + y * 0.055 + Math.sin(y * 0.009 + 0.8) * 24 + Math.sin(y * 0.023 + 1.6) * 16;
 
-          const roughBlobPath = (cx, cy, rx, ry, steps = 22, jitter = 0.12, rotation = 0) => {
+          const roughBlobPath = (cx, cy, rx, ry, steps = 22, jitter = 0.22, rotation = 0) => {
             ctx.beginPath();
             for (let i = 0; i <= steps; i += 1) {
               const t = i / steps;
               const ang = rotation + t * Math.PI * 2;
-              const wobble = 1 + Math.sin(ang * 3.1 + rotation * 2.7) * jitter * 0.55 + (rng() - 0.5) * jitter;
+              const wobble = 1 + Math.sin(ang * 3.1 + rotation * 2.7) * jitter * 0.6 + (rng() - 0.5) * jitter;
               const x = cx + Math.cos(ang) * rx * wobble;
               const y = cy + Math.sin(ang) * ry * wobble;
               if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -11439,7 +11471,7 @@ class WaveManager {
 
           const fillTexturedBlob = (cx, cy, rx, ry, fillA, fillB, outline, rotation = 0) => {
             ctx.save();
-            roughBlobPath(cx, cy, rx, ry, 26, 0.16, rotation);
+            roughBlobPath(cx, cy, rx, ry, 26, 0.24, rotation);
             const g = ctx.createRadialGradient(cx - rx * 0.2, cy - ry * 0.34, 12, cx, cy, Math.max(rx, ry) * 1.15);
             g.addColorStop(0, fillA);
             g.addColorStop(1, fillB);
@@ -11456,12 +11488,20 @@ class WaveManager {
 
           const drawParchment = () => {
             const base = ctx.createLinearGradient(0, 0, 0, height);
-            base.addColorStop(0, '#efd7ac');
-            base.addColorStop(0.38, '#d0ab71');
-            base.addColorStop(0.78, '#a06e3d');
-            base.addColorStop(1, '#764a27');
+            base.addColorStop(0, '#e6d0a4');
+            base.addColorStop(0.4, '#c9a56a');
+            base.addColorStop(0.8, '#9a6a3b');
+            base.addColorStop(1, '#704625');
             ctx.fillStyle = base;
             ctx.fillRect(0, 0, width, height);
+
+            // Add paper grain noise overlay
+            for (let i = 0; i < 4000; i++) {
+              const px = rng() * width;
+              const py = rng() * height;
+              ctx.fillStyle = `rgba(0,0,0,${rng() * 0.04})`;
+              ctx.fillRect(px, py, 1, 1);
+            }
 
             const warmLight = ctx.createRadialGradient(width * 0.34, height * 0.18, 28, width * 0.34, height * 0.18, width * 0.76);
             warmLight.addColorStop(0, 'rgba(255,248,230,0.30)');
