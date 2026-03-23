@@ -8965,6 +8965,7 @@ render(ctx, time, buildMode) {
         }
 
         drawHealthBar(ctx, r) {
+          if (!this.maxHp) return;
           const barW = Math.max(20, r * 1.6);
           const barH = 4;
           const pct = clamp(this.hp / this.maxHp, 0, 1);
@@ -10308,10 +10309,10 @@ render(ctx, time, buildMode) {
         drawClouds(ctx) {
           ctx.save();
           this.clouds.forEach(c => {
-            ctx.globalAlpha = c.opacity;
+            ctx.globalAlpha = c.opacity || 0.05;
             ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.ellipse(c.x, c.y, 250 * c.scale, 110 * c.scale, 0, 0, TAU);
+            // Używamy irregularBlobPath dla bardziej naturalnych chmur i bezpieczeństwa
+            irregularBlobPath(ctx, c.x || 0, c.y || 0, 250 * (c.scale || 1), 110 * (c.scale || 1), { roughness: 0.3, seed: c.seed });
             ctx.fill();
           });
           ctx.restore();
@@ -10321,12 +10322,13 @@ render(ctx, time, buildMode) {
           ctx.strokeStyle = 'rgba(0,0,0,0.4)';
           ctx.lineWidth = 2.8;
           ctx.lineCap = 'round';
+          ctx.shadowBlur = 0; // Reset na wszelki wypadek
           this.birds.forEach(b => {
-            const f = Math.sin(b.flap) * b.size;
+            const f = Math.sin(b.flap || 0) * (b.size || 5);
             ctx.beginPath();
-            ctx.moveTo(b.x - b.size, b.y + f);
-            ctx.lineTo(b.x, b.y);
-            ctx.lineTo(b.x + b.size, b.y + f);
+            ctx.moveTo((b.x || 0) - (b.size || 5), (b.y || 0) + f);
+            ctx.lineTo(b.x || 0, b.y || 0);
+            ctx.lineTo((b.x || 0) + (b.size || 5), (b.y || 0) + f);
             ctx.stroke();
           });
           ctx.restore();
@@ -13772,7 +13774,7 @@ loop(time) {
 
         drawSpawnIndicators(ctx) {
           const wm = this.waveManager;
-          if (wm.state === 'ready' && wm.currentWave < wm.totalWaves && wm.readyCountdown < 12) {
+          if (wm.state === 'ready' && wm.currentWave < wm.totalWaves && wm.readyCountdown < 12 && this.map.startPoint) {
             const start = this.map.startPoint;
             const bounce = Math.sin(this.time * 6) * 10;
             const alpha = clamp((12 - wm.readyCountdown) / 2, 0, 1);
@@ -13788,6 +13790,9 @@ loop(time) {
             ctx.font = '32px Inter';
             ctx.textAlign = 'center';
             ctx.fillText('⚔️', 0, -40);
+
+            // Reset cienia przed rysowaniem linii
+            ctx.shadowBlur = 0;
 
             // Timer kołowy
             const pct = wm.readyCountdown / 15;
@@ -16169,9 +16174,9 @@ loop(time) {
 
       Tower.prototype.update = function updatePack(dt) {
         ensureTowerPackState(this);
-        this.flash = Math.max(0, this.flash - dt * 3.6);
-        this.recoil = Math.max(0, this.recoil - dt * 10);
-        this.muzzleFlash = Math.max(0, this.muzzleFlash - dt * 15);
+        this.flash = Math.max(0, (this.flash || 0) - dt * 3.6);
+        this.recoil = Math.max(0, (this.recoil || 0) - dt * 10);
+        this.muzzleFlash = Math.max(0, (this.muzzleFlash || 0) - dt * 15);
 
         // Klimatyczny efekt spadających liści dla wież-drzew
         if (Math.random() < 0.008 && this.game.state === 'playing' && !this.game.paused) {
