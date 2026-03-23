@@ -4448,6 +4448,7 @@
       animation: pulseBonus 1.5s infinite !important;
       border-color: #ffd700 !important;
     }
+    .statPlus { color: #2ecc71; font-size: 0.85em; margin-left: 4px; font-weight: 700; }
   </style>
 
 </head>
@@ -11026,12 +11027,20 @@ class Tower {
           return Math.floor(this.totalSpent * 0.7);
         }
 
+        cycleTargetMode() {
+          const modes = ['first', 'last', 'strongest', 'weakest', 'closest'];
+          let idx = modes.indexOf(this.targetMode || 'first');
+          this.targetMode = modes[(idx + 1) % modes.length];
+          this.game.ui.update(true);
+        }
+
         containsPoint(x, y) {
           return distSq(this.x, this.y, x, y) <= (this.collisionRadius + 3) * (this.collisionRadius + 3);
         }
 
         selectTarget() {
           const rangeSq = this.stats.range * this.stats.range;
+          const mode = this.targetMode || 'first';
           let best = null;
           let bestScore = -Infinity;
 
@@ -11041,22 +11050,25 @@ class Tower {
             const d = distSq(this.x, this.y, enemy.cx, enemy.cy);
             if (d > rangeSq) continue;
 
-            let score;
-            if (this.typeKey === 'laser') {
-              score = (enemy instanceof BossEnemy ? 10000 : 0) + enemy.maxHp * 0.7 + enemy.pathDistance * 0.08;
-            } else if (this.typeKey === 'cannon') {
+            let score = 0;
+            switch(mode) {
+              case 'strongest': score = enemy.hp + (enemy instanceof BossEnemy ? 100000 : 0); break;
+              case 'weakest':   score = -enemy.hp; break;
+              case 'closest':   score = -d; break;
+              case 'last':      score = -enemy.pathDistance; break;
+              case 'first':
+              default:          score = enemy.pathDistance; break;
+            }
+
+            // Modyfikatory specyficzne dla typu (cannon szuka skupisk)
+            if (this.typeKey === 'cannon' && mode === 'first') {
               let nearby = 0;
-              const splashCheck = (this.stats.splash || 0) * 1.15;
+              const splashCheck = (this.stats.splash || 0);
               for (let j = 0; j < this.game.enemies.length; j += 1) {
                 const other = this.game.enemies[j];
-                if (other.dead) continue;
-                if (distance(enemy.cx, enemy.cy, other.cx, other.cy) <= splashCheck) nearby += 1;
+                if (!other.dead && distance(enemy.cx, enemy.cy, other.cx, other.cy) <= splashCheck) nearby += 1;
               }
-              score = enemy.pathDistance + nearby * 45 + (enemy instanceof BossEnemy ? 120 : 0);
-            } else if (this.typeKey === 'ice') {
-              score = enemy.pathDistance + enemy.speed * 0.15;
-            } else {
-              score = enemy.pathDistance;
+              score += nearby * 50;
             }
 
             if (score > bestScore) {
@@ -11668,13 +11680,23 @@ class WaveManager {
           if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
           const key = event.key.toLowerCase();
 
-          if (key === '1') this.game.toggleBuildMode('gun');
-          if (key === '2') this.game.toggleBuildMode('cannon');
-          if (key === '3') this.game.toggleBuildMode('ice');
-          if (key === '4') this.game.toggleBuildMode('laser');
+          if (key === '1') this.game.ui.handleSkillClick('meteor');
+          if (key === '2') this.game.ui.handleSkillClick('militia');
+          if (key === '3') this.game.toggleHeroSelection();
+          if (key === 'h') {
+             this.game.camera.x = this.game.hero.x;
+             this.game.camera.y = this.game.hero.y;
+             this.game.clampCamera();
+             this.game.ui.showToast('Centrowanie na bohaterze', 'info');
+          }
+          if (key === 'q') this.game.toggleBuildMode('gun');
+          if (key === 'w') this.game.toggleBuildMode('cannon');
+          if (key === 'e') this.game.toggleBuildMode('ice');
+          if (key === 'r') this.game.toggleBuildMode('laser');
           if (key === 'p') this.game.togglePause();
           if (key === 'f') this.game.toggleSpeed();
           if (key === 'u') this.game.upgradeSelectedTower();
+          if (key === 's') this.game.sellSelectedTower();
           if (key === 'x' || key === 'delete') this.game.sellSelectedTower();
           if (key === 'm') this.game.ui.setMapModalVisible(!this.game.ui.refs.campaignMapScreen.classList.contains('show'));
           if (key === 'b') this.game.ui.toggleCodexDrawer();
@@ -13678,6 +13700,7 @@ loop(time) {
 
           this.map.render(ctx, this.time, this.buildMode);
           this.atmosphere.drawClouds(ctx);
+          this.drawSpawnIndicators(ctx);
           this.hero.draw(ctx);
 
           for (let i = 0; i < this.groundEffects.length; i += 1) {
@@ -13744,6 +13767,37 @@ loop(time) {
             ctx.globalAlpha = this.screenFlashAlpha;
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
             ctx.globalAlpha = 1;
+          }
+        }
+
+        drawSpawnIndicators(ctx) {
+          const wm = this.waveManager;
+          if (wm.state === 'ready' && wm.currentWave < wm.totalWaves && wm.readyCountdown < 12) {
+            const start = this.map.startPoint;
+            const bounce = Math.sin(this.time * 6) * 10;
+            const alpha = clamp((12 - wm.readyCountdown) / 2, 0, 1);
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(start.x, start.y + bounce);
+
+            // Ikona mieczy
+            ctx.fillStyle = '#ff4500';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ff4500';
+            ctx.font = '32px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚔️', 0, -40);
+
+            // Timer kołowy
+            const pct = wm.readyCountdown / 15;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(0, -40, 22, -Math.PI/2, -Math.PI/2 + (TAU * pct));
+            ctx.stroke();
+
+            ctx.restore();
           }
         }
 
@@ -15483,6 +15537,7 @@ loop(time) {
         if (!Object.prototype.hasOwnProperty.call(tower, 'rotationJerk')) tower.rotationJerk = 0;
         if (!Object.prototype.hasOwnProperty.call(tower, 'recoil')) tower.recoil = 0;
         if (!Object.prototype.hasOwnProperty.call(tower, 'muzzleFlash')) tower.muzzleFlash = 0;
+        if (!Object.prototype.hasOwnProperty.call(tower, 'targetMode')) tower.targetMode = 'first';
       }
 
       function getTowerMaxLevel(tower) {
@@ -16882,6 +16937,12 @@ loop(time) {
         const stats = tower.stats;
         const branch = getTowerBranch(tower);
         const nextCost = tower.getUpgradeCost();
+        let nextStats = null;
+        if (tower.level < 5) {
+          const mockTower = { ...tower, level: tower.level + 1 };
+          Object.setPrototypeOf(mockTower, Tower.prototype);
+          nextStats = mockTower.stats;
+        }
         const name = branch ? `${tower.config.name} • ${branch.title}` : tower.config.name;
         const desc = branch ? `${tower.config.description} <br><strong>Ścieżka:</strong> ${branch.flavor}` : tower.config.description;
         const evolutionUI = (tower.level === 3 && !tower.branch)
@@ -16915,9 +16976,18 @@ loop(time) {
           </div>
           <div class="selectedDesc">${desc}</div>
           <div class="statGrid">
-            <div class="smallStat"><label>DMG</label><strong>${formatNumber(stats.damage)}</strong></div>
-            <div class="smallStat"><label>RNG</label><strong>${formatNumber(stats.range)}</strong></div>
-            <div class="smallStat"><label>APS</label><strong>${stats.fireRate.toFixed(2)}</strong></div>
+            <div class="smallStat">
+              <label>DMG</label>
+              <strong>${formatNumber(stats.damage)}${nextStats ? ` <span class="statPlus">+${formatNumber(nextStats.damage - stats.damage)}</span>` : ''}</strong>
+            </div>
+            <div class="smallStat">
+              <label>RNG</label>
+              <strong>${formatNumber(stats.range)}${nextStats ? ` <span class="statPlus">+${formatNumber(nextStats.range - stats.range)}</span>` : ''}</strong>
+            </div>
+            <div class="smallStat">
+              <label>APS</label>
+              <strong>${stats.fireRate.toFixed(2)}${nextStats && nextStats.fireRate > stats.fireRate ? ` <span class="statPlus">+${(nextStats.fireRate - stats.fireRate).toFixed(2)}</span>` : ''}</strong>
+            </div>
             <div class="smallStat"><label>SELL</label><strong>${tower.getSellValue()}g</strong></div>
           </div>
           ${branch ? `<div class="branchActiveBadge"><img src="${branch.icon}" alt="${branch.title}"><span>Aktywna ewolucja: <strong>${branch.title}</strong> • ${branch.tag}</span></div>` : ''}
@@ -16936,6 +17006,22 @@ loop(time) {
         this.refs.btnUpgrade.textContent = tower.level === 3 && !tower.branch ? 'Wybierz drogę' : nextCost ? `Ulepsz ${nextCost}g` : 'MAX';
         this.refs.btnSell.disabled = this.game.state !== 'playing';
         this.refs.btnSell.textContent = `Sprzedaj ${tower.getSellValue()}g`;
+
+        // Targeting Mode Button
+        const modesDisplay = {
+          first: 'Pierwszy',
+          last: 'Ostatni',
+          strongest: 'Najsilniejszy',
+          weakest: 'Najsłabszy',
+          closest: 'Najbliższy'
+        };
+        const modeBtn = document.createElement('button');
+        modeBtn.className = 'smallBtn alt';
+        modeBtn.style.marginTop = '8px';
+        modeBtn.style.width = '100%';
+        modeBtn.textContent = `Cel: ${modesDisplay[tower.targetMode || 'first']}`;
+        modeBtn.onclick = () => tower.cycleTargetMode();
+        this.refs.selectedButtons.appendChild(modeBtn);
       };
 
       const originalGetActiveBoss = Game.prototype.getActiveBoss;
