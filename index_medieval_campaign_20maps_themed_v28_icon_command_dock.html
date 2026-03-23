@@ -70,6 +70,45 @@
       mix-blend-mode: soft-light;
     }
 
+    #mainMenu {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      background: radial-gradient(circle at center, #2c1e12, #000);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.8s ease-in-out, transform 0.8s ease-in-out;
+    }
+    #mainMenu.hidden { opacity: 0; transform: scale(1.1); pointer-events: none; }
+    .gameLogo {
+      font-size: 86px;
+      font-weight: 900;
+      color: #ffd700;
+      text-shadow: 0 0 50px rgba(255, 215, 0, 0.4), 0 10px 0 #8b4513;
+      margin-bottom: 50px;
+      letter-spacing: -3px;
+      animation: logoFloat 3.5s ease-in-out infinite;
+    }
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+      50% { transform: translateY(-20px) rotate(1.5deg); }
+    }
+    .btnStartGame {
+      padding: 22px 70px;
+      font-size: 34px;
+      background: linear-gradient(180deg, #ffcc00, #ff8c00);
+      border: 4px solid #fff;
+      border-radius: 60px;
+      color: #fff;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 12px 35px rgba(0,0,0,0.6);
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .btnStartGame:hover { transform: scale(1.15); box-shadow: 0 18px 50px rgba(255,215,0,0.5); }
+
     #viewport {
       width: 100vw;
       height: 100vh;
@@ -4138,6 +4177,49 @@
       width: 296px !important;
       min-height: 122px !important;
     }
+    .metaUpgradeGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .metaUpgradeCard {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .metaUpgradeCard:hover { background: rgba(255,255,255,0.1); border-color: #ffd700; }
+    .metaUpgradeCard.active { border-color: #0f0; background: rgba(0,255,0,0.05); }
+    .metaUpgradeCard h4 { margin: 0 0 4px 0; color: #ffd700; font-size: 13px; }
+    .metaUpgradeCard p { margin: 0; font-size: 11px; opacity: 0.7; line-height: 1.2; }
+    .metaUpgradeCard .cost { font-weight: bold; margin-top: 6px; font-size: 12px; color: #0f0; }
+
+    #heroDock {
+      position: absolute !important;
+      left: 20px !important;
+      bottom: 430px !important;
+      z-index: 1001 !important;
+      pointer-events: auto !important;
+    }
+    .heroPortrait {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ffd700, #b8860b);
+      border: 3px solid #fff;
+      box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      font-size: 34px;
+      transition: all 0.2s;
+    }
+    .heroPortrait.active { border-color: #0f0; box-shadow: 0 0 20px #0f0; transform: scale(1.1); }
+
     #skillDock {
       position: absolute !important;
       left: 20px !important;
@@ -4349,6 +4431,11 @@
 
 </head>
 <body>
+  <div id="mainMenu">
+    <div class="gameLogo">KINGDOM DEFENSE</div>
+    <button class="btnStartGame" onclick="document.getElementById('mainMenu').classList.add('hidden')">ZACZNIJ BITWĘ</button>
+    <div style="margin-top: 30px; color: #777; font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">Professional Studio Polish • v1.0</div>
+  </div>
   <div id="viewport">
     <div id="gameScaleWrap">
       <div id="gameShell">
@@ -4416,6 +4503,9 @@
             <div id="campaignNodes"></div>
           </div>
 
+          <div id="heroDock">
+            <div id="heroPortrait" class="heroPortrait" title="Paladyn: Kliknij by wybrać i przemieścić" onclick="window.offlineTowerDefenseGame.toggleHeroSelection()">🛡️</div>
+          </div>
           <div id="skillDock"></div>
           <div id="sidebar">
             <div class="panel" id="controlsPanel" aria-label="Szybkie sterowanie">
@@ -4564,6 +4654,7 @@
       const GRID_SIZE = 15;
       const TAU = Math.PI * 2;
       const HIGH_SCORE_KEY = 'offline_td_highscore_v2_medieval';
+      const META_DATA_KEY = 'offline_td_meta_v1';
       const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
       const TOWER_TYPES = {
@@ -8565,6 +8656,59 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class Hero {
+        constructor(game) {
+          this.game = game;
+          this.x = MAP_WIDTH * 0.45;
+          this.y = GAME_HEIGHT * 0.5;
+          this.targetX = this.x;
+          this.targetY = this.y;
+          this.speed = 135;
+          this.damage = 18;
+          this.range = 80;
+          this.cooldown = 0;
+          this.maxHp = 400;
+          this.hp = 400;
+          this.flash = 0;
+          this.selected = false;
+        }
+        update(dt) {
+          this.flash = Math.max(0, this.flash - dt * 5);
+          this.cooldown = Math.max(0, this.cooldown - dt);
+          const d = distance(this.x, this.y, this.targetX, this.targetY);
+          if (d > 4) {
+            const angle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+            this.x += Math.cos(angle) * this.speed * dt;
+            this.y += Math.sin(angle) * this.speed * dt;
+          }
+          if (this.cooldown <= 0) {
+            const target = this.game.enemies.find(e => !e.dead && distance(this.x, this.y, e.cx, e.cy) <= this.range);
+            if (target) {
+              target.takeDamage(this.damage, 'hero');
+              this.game.particles.spark(target.cx, target.cy, '#ffd700', 5, 80);
+              this.cooldown = 0.7;
+              this.flash = 1.0;
+            }
+          }
+          this.hp = Math.min(this.maxHp, this.hp + dt * 10);
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.beginPath(); ctx.ellipse(0, 14, 18, 8, 0, 0, TAU); ctx.fill();
+          if (this.selected) {
+            ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2.5; ctx.setLineDash([4,2]);
+            ctx.beginPath(); ctx.ellipse(0, 14, 24, 12, 0, 0, TAU); ctx.stroke();
+          }
+          ctx.fillStyle = this.flash > 0 ? '#fff' : '#ffd700';
+          ctx.beginPath(); ctx.moveTo(-12, 12); ctx.lineTo(12, 12); ctx.lineTo(0, -22); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#fdd'; ctx.beginPath(); ctx.arc(0, -24, 8, 0, TAU); ctx.fill();
+          ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(24, -18); ctx.stroke();
+          ctx.restore();
+        }
+      }
+
       class Enemy {
         constructor(game, typeKey, wave, options = {}) {
           this.game = game;
@@ -10181,6 +10325,26 @@ render(ctx, time, buildMode) {
 
         baseHit(x, y) {
           this.explosion(x, y, '#ff8b8b', 16, 92);
+        }
+
+        butterfly(x, y) {
+          const colors = ['#ff69b4', '#00ced1', '#ffd700'];
+          const color = colors[Math.floor(Math.random() * colors.length)];
+          for (let i = 0; i < 4; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 5 + Math.random() * 15;
+            this.particles.push(new Particle(
+              x + Math.cos(angle) * dist,
+              y + Math.sin(angle) * dist,
+              (Math.random() - 0.5) * 40,
+              -20 - Math.random() * 40,
+              rand(2, 4),
+              color,
+              rand(1.0, 2.0),
+              -10,
+              'circle'
+            ));
+          }
         }
 
         update(dt) {
@@ -12740,9 +12904,38 @@ updateCampaign() {
 
   const selectionNote = game.state === 'choosing' ? `${game.developerUnlockedAllLevels ? 'Tryb developera: każdy sztandar jest aktywny. ' : ''}Sztandar aktualnego poziomu świeci jaśniej na mapie. Dopiero po wyborze eventu i trudności wejdziesz do właściwej bitwy.` : 'Bitwa już trwa. Możesz przeglądać mapę i sztandary, ale kolejny poziom odblokuje się dopiero po zwycięstwie.';
 
-  this.refs.mapDetailPanel.innerHTML = `<div class="mapDetailHeader"><div class="mapDetailKicker">${mission?.act || 'Kampania'} • poziom ${level}</div><div class="mapDetailTitle">${mission?.title || `Poziom ${level}`}</div><div class="mapDetailDesc">${mission?.brief || ''}</div></div><div class="mapLoreBox">${MAP_MOTIFS[level - 1]?.name || 'Motyw mapy'} • ${mission?.flavor || 'Front jest gotowy na kolejne oblężenie.'}</div><div class="mapStatLine">${statPills.join('')}</div>${relicMarkup}${eventMarkup}${game.state === 'choosing' ? `<div class="mapDifficultyDeck">${difficultyMarkup}</div>` : ''}<div class="mapSelectionNote">${selectionNote}</div>`;
+  const metaUI = this.renderMetaUpgrades();
+  this.refs.mapDetailPanel.innerHTML = `<div class="mapDetailHeader"><div class="mapDetailKicker">${mission?.act || 'Kampania'} • poziom ${level}</div><div class="mapDetailTitle">${mission?.title || `Poziom ${level}`}</div><div class="mapDetailDesc">${mission?.brief || ''}</div></div><div class="mapLoreBox">${MAP_MOTIFS[level - 1]?.name || 'Motyw mapy'} • ${mission?.flavor || 'Front jest gotowy na kolejne oblężenie.'}</div><div class="mapStatLine">${statPills.join('')}</div>${relicMarkup}${eventMarkup}${metaUI}${game.state === 'choosing' ? `<div class="mapDifficultyDeck">${difficultyMarkup}</div>` : ''}<div class="mapSelectionNote">${selectionNote}</div>`;
 
   this.refreshCampaignMapCanvas();
+}
+
+renderMetaUpgrades() {
+  const g = this.game;
+  const items = [
+    { key: 'towerDmg', name: 'Siła Ognia', desc: '+15% DMG wież', cost: 3 },
+    { key: 'towerRange', name: 'Dalekosiężność', desc: '+10% zasięgu', cost: 3 },
+    { key: 'startGold', name: 'Zasoby', desc: '+200g na start', cost: 5, value: 200 },
+    { key: 'heroHp', name: 'Wytrzymałość', desc: '+20% HP Paladyna', cost: 4 }
+  ];
+
+  const cards = items.map(it => {
+    const active = (g.metaUpgrades[it.key] > 0);
+    return `
+      <div class="metaUpgradeCard ${active ? 'active' : ''}" onclick="window.offlineTowerDefenseGame.buyMetaUpgrade('${it.key}', ${it.cost}, ${it.value || 0.15})">
+        <h4>${it.name}</h4>
+        <p>${it.desc}</p>
+        <div class="cost">${active ? 'WYKUPIONE' : it.cost + ' ★'}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="metaUpgradeSection">
+      <div class="mapLoreBox">Laboratorium Królewskie (Gwiazdki: ${g.totalStars} ★)</div>
+      <div class="metaUpgradeGrid">${cards}</div>
+    </div>
+  `;
 }
 
 update(force = false) {
@@ -12864,6 +13057,7 @@ update(force = false) {
           this.map = new GameMap(this);
           this.particles = new ParticleSystem(this);
           this.atmosphere = new AtmosphericSystem(this);
+          this.hero = new Hero(this);
           this.waveManager = new WaveManager(this);
           this.ui = new UIManager(this);
           this.input = new InputHandler(this);
@@ -12891,6 +13085,15 @@ update(force = false) {
           this.currentBattleModifiers = null;
           this.routeEffects = null;
           this.developerUnlockAllLevels = true;
+          this.totalStars = 0;
+          this.metaUpgrades = {
+            towerDmg: 0,
+            towerRange: 0,
+            startGold: 0,
+            heroHp: 0
+          };
+          this.loadMetaData();
+
           this.screenFlashColor = 'rgba(255,255,255,0)';
           this.screenFlashAlpha = 0;
           this.shake = 0;
@@ -12917,9 +13120,31 @@ update(force = false) {
         saveHighScore() {
           try {
             window.localStorage.setItem(HIGH_SCORE_KEY, String(this.highScore));
+            this.saveMetaData();
           } catch (error) {
             // Ignore storage failures.
           }
+        }
+
+        saveMetaData() {
+          try {
+            const data = {
+              totalStars: this.totalStars,
+              upgrades: this.metaUpgrades
+            };
+            window.localStorage.setItem(META_DATA_KEY, JSON.stringify(data));
+          } catch (e) {}
+        }
+
+        loadMetaData() {
+          try {
+            const raw = window.localStorage.getItem(META_DATA_KEY);
+            if (raw) {
+              const data = JSON.parse(raw);
+              this.totalStars = data.totalStars || 0;
+              this.metaUpgrades = data.upgrades || this.metaUpgrades;
+            }
+          } catch (e) {}
         }
 
         clampCamera() {
@@ -13291,6 +13516,7 @@ loop(time) {
           }
           this.particles.update(dt);
           this.atmosphere.update(dt);
+          this.hero.update(dt);
 
           this.enemies = this.enemies.filter((enemy) => !enemy.dead);
           this.projectiles = this.projectiles.filter((projectile) => !projectile.dead);
@@ -13330,6 +13556,7 @@ loop(time) {
 
           this.map.render(ctx, this.time, this.buildMode);
           this.atmosphere.drawClouds(ctx);
+          this.hero.draw(ctx);
 
           for (let i = 0; i < this.groundEffects.length; i += 1) {
             this.groundEffects[i].draw(ctx);
@@ -13499,9 +13726,29 @@ loop(time) {
           this.canvas.style.cursor = this.mouse?.onMap && this.camera.zoom > 1.001 ? 'grab' : 'default';
         }
 
+        toggleHeroSelection() {
+          if (this.state !== 'playing') return;
+          this.hero.selected = !this.hero.selected;
+          if (this.hero.selected) {
+            this.activeSkillMode = null;
+            this.buildMode = null;
+            this.ui.showToast('Wybierz cel na mapie, aby przemieścić Paladyna.', 'info');
+          }
+          document.getElementById('heroPortrait').classList.toggle('active', this.hero.selected);
+        }
+
         handleMapClick(x, y) {
           if (this.state !== 'playing' || this.paused) return;
           if (x >= MAP_WIDTH || y < 0 || y > GAME_HEIGHT) return;
+
+          if (this.hero.selected) {
+            this.hero.targetX = x;
+            this.hero.targetY = y;
+            this.hero.selected = false;
+            document.getElementById('heroPortrait').classList.remove('active');
+            this.particles.addEffect(new RingEffect(x, y, 5, 45, '#ffd700', 0.3, 0.4));
+            return;
+          }
 
           if (this.activeSkillMode) {
             this.activateSkillAt(x, y);
@@ -13514,6 +13761,9 @@ loop(time) {
           }
           const tower = this.getTowerAt(x, y);
           this.selectTower(tower);
+          if (!tower) {
+            this.particles.butterfly(x, y);
+          }
         }
 
         getTowerAt(x, y) {
@@ -13839,6 +14089,20 @@ loop(time) {
               </div>
             `;
           }).join('');
+        }
+
+        buyMetaUpgrade(key, cost, val) {
+          if (this.totalStars >= cost && !this.metaUpgrades[key]) {
+            this.totalStars -= cost;
+            this.metaUpgrades[key] = val;
+            this.saveMetaData();
+            this.ui.updateCampaign();
+            this.ui.showToast('Ulepszenie odblokowane!', 'info');
+          } else if (this.metaUpgrades[key]) {
+            this.ui.showToast('To ulepszenie jest już aktywne.', 'warn');
+          } else {
+            this.ui.showToast('Za mało gwiazdek!', 'warn');
+          }
         }
 
         handleSkillClick(id) {
@@ -15092,6 +15356,7 @@ loop(time) {
         configurable: true,
         get() {
           ensureTowerPackState(this);
+          const meta = this.game.metaUpgrades || {};
           let base;
           if (this.level <= 3 || !this.branch) {
             base = this.config.levels[Math.min(this.level - 1, 2)];
@@ -15102,8 +15367,8 @@ loop(time) {
           const buffs = this.game.getEquipmentBuffs();
           return {
             ...base,
-            damage: base.damage * (buffs.damageMult || 1),
-            range: base.range * (buffs.rangeMult || 1),
+            damage: base.damage * (buffs.damageMult || 1) * (1 + (meta.towerDmg || 0)),
+            range: base.range * (buffs.rangeMult || 1) * (1 + (meta.towerRange || 0)),
             fireRate: base.fireRate * (buffs.fireRateMult || 1)
           };
         }
