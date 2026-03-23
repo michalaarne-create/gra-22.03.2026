@@ -4427,6 +4427,27 @@
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23ffe7bf' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M4 12a8 8 0 1 1 3 6.2'/%3E%3Cpath fill='none' stroke='%23ffe7bf' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M4 17v-4h4'/%3E%3Cpath fill='none' stroke='%2398ffb9' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M8 12.5l2.2 2.2L16 9'/%3E%3C/svg%3E");
     }
 
+    /* Gamer Polish - Juicy UI */
+    .ctrl, .smallBtn, .towerCard, .heroPortrait, .skillBtn, .metaUpgradeCard, .difficultyCard {
+      transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+    .ctrl:hover, .smallBtn:hover, .towerCard:hover, .heroPortrait:hover, .skillBtn:hover, .metaUpgradeCard:hover {
+      transform: scale(1.05) translateY(-2px) !important;
+      filter: brightness(1.1);
+    }
+    .ctrl:active, .smallBtn:active, .towerCard:active, .heroPortrait:active, .skillBtn:active {
+      transform: scale(0.92) !important;
+    }
+
+    @keyframes pulseBonus {
+      0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(255, 215, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+    }
+    .pulse-early {
+      animation: pulseBonus 1.5s infinite !important;
+      border-color: #ffd700 !important;
+    }
   </style>
 
 </head>
@@ -8671,6 +8692,24 @@ render(ctx, time, buildMode) {
           this.hp = 400;
           this.flash = 0;
           this.selected = false;
+          this.level = 1;
+          this.xp = 0;
+          this.xpNext = 100;
+        }
+        gainXp(amt) {
+          if (this.level >= 10) return;
+          this.xp += amt;
+          if (this.xp >= this.xpNext) {
+            this.xp -= this.xpNext;
+            this.level += 1;
+            this.xpNext = Math.floor(this.xpNext * 1.5);
+            this.damage = Math.round(this.damage * 1.2);
+            this.maxHp = Math.round(this.maxHp * 1.2);
+            this.hp = this.maxHp;
+            this.game.particles.addEffect(new FloatingText(this.x, this.y - 40, 'LEVEL UP!', '#fff', 28, 1.5));
+            this.game.addShake(5);
+            this.game.ui.showToast(`Bohater awansował na poziom ${this.level}!`, 'info');
+          }
         }
         update(dt) {
           this.flash = Math.max(0, this.flash - dt * 5);
@@ -8685,6 +8724,7 @@ render(ctx, time, buildMode) {
             const target = this.game.enemies.find(e => !e.dead && distance(this.x, this.y, e.cx, e.cy) <= this.range);
             if (target) {
               target.takeDamage(this.damage, 'hero');
+              this.gainXp(5); // XP za hit
               this.game.particles.spark(target.cx, target.cy, '#ffd700', 5, 80);
               this.cooldown = 0.7;
               this.flash = 1.0;
@@ -8705,6 +8745,23 @@ render(ctx, time, buildMode) {
           ctx.beginPath(); ctx.moveTo(-12, 12); ctx.lineTo(12, 12); ctx.lineTo(0, -22); ctx.closePath(); ctx.fill();
           ctx.fillStyle = '#fdd'; ctx.beginPath(); ctx.arc(0, -24, 8, 0, TAU); ctx.fill();
           ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(24, -18); ctx.stroke();
+
+          // XP Bar pod nogami
+          if (this.level < 10) {
+            const barW = 30;
+            const pct = this.xp / this.xpNext;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(-barW/2, 22, barW, 4);
+            ctx.fillStyle = '#0cf';
+            ctx.fillRect(-barW/2, 22, barW * pct, 4);
+          }
+
+          // Level badge
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px Inter';
+          ctx.textAlign = 'center';
+          ctx.fillText(`LVL ${this.level}`, 0, 38);
+
           ctx.restore();
         }
       }
@@ -8906,6 +8963,18 @@ render(ctx, time, buildMode) {
           this.game.onEnemyLeak(this);
         }
 
+        drawHealthBar(ctx, r) {
+          const barW = Math.max(20, r * 1.6);
+          const barH = 4;
+          const pct = clamp(this.hp / this.maxHp, 0, 1);
+          ctx.save();
+          ctx.translate(0, -r - 10);
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillRect(-barW/2, 0, barW, barH);
+          ctx.fillStyle = pct > 0.5 ? '#2ecc71' : pct > 0.25 ? '#f1c40f' : '#e74c3c';
+          ctx.fillRect(-barW/2, 0, barW * pct, barH);
+          ctx.restore();
+        }
         draw(ctx) {
           if (this.dead) return;
           const angle = Math.atan2(this.vy, this.vx);
@@ -8959,6 +9028,10 @@ render(ctx, time, buildMode) {
           ctx.save();
           ctx.translate(this.cx, bodyY + Math.sin(phase * 2.1) * (this.flying ? 2.4 : 0.9));
           ctx.rotate(angle + Math.PI / 2 + Math.sin(phase * 1.6) * (this.typeKey === 'fast' ? 0.08 : 0.03));
+
+          if (this.hp < this.maxHp) {
+            this.drawHealthBar(ctx, r);
+          }
 
           const bodyGrad = ctx.createLinearGradient(0, -r * 1.2, 0, r * 1.05);
           bodyGrad.addColorStop(0, flashAlpha > 0 ? hexToRgba('#ffffff', Math.min(0.85, flashAlpha + 0.18)) : accentColor);
@@ -9927,6 +10000,32 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class ScorchMark {
+        constructor(game, x, y, radius, life = 8.0) {
+          this.game = game;
+          this.x = x;
+          this.y = y;
+          this.radius = radius;
+          this.life = life;
+          this.maxLife = life;
+          this.dead = false;
+          this.seed = Math.random() * 100;
+        }
+        update(dt) {
+          this.life -= dt;
+          if (this.life <= 0) this.dead = true;
+        }
+        draw(ctx) {
+          const alpha = clamp(this.life / this.maxLife, 0, 1) * 0.4;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = '#111';
+          irregularBlobPath(ctx, this.x, this.y, this.radius, this.radius * 0.6, { roughness: 0.4, seed: this.seed });
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
       class ScorchField {
         constructor(game, x, y, options = {}) {
           this.game = game;
@@ -10300,7 +10399,25 @@ render(ctx, time, buildMode) {
           ));
         }
 
+        bloodBurst(x, y, count = 6) {
+          for (let i = 0; i < count; i++) {
+            this.particles.push(new Particle(
+              x + (Math.random()-0.5)*10,
+              y + (Math.random()-0.5)*10,
+              (Math.random()-0.5)*20,
+              (Math.random()-0.5)*20,
+              rand(3, 6),
+              '#8a0303',
+              rand(2.0, 4.0),
+              0,
+              'circle'
+            ));
+          }
+        }
         enemyDeath(enemy) {
+          if (enemy.typeKey !== 'flying') {
+            this.bloodBurst(enemy.cx, enemy.cy, enemy.typeKey === 'boss' ? 20 : 8);
+          }
           const color = enemy.typeKey === 'boss' ? '#ffb88e' : enemy.base.color;
           this.explosion(enemy.cx, enemy.cy, color, enemy.typeKey === 'boss' ? 34 : 10, enemy.typeKey === 'boss' ? 120 : 44);
           if (enemy.typeKey === 'boss') {
@@ -11403,10 +11520,10 @@ class WaveManager {
   }
 
   update(dt) {
-    if (this.state === 'ready' && this.game.autoStart && this.currentWave > 0 && this.currentWave < this.totalWaves) {
+    if (this.state === 'ready' && this.currentWave > 0 && this.currentWave < this.totalWaves) {
       if (this.readyCountdown > 0) {
         this.readyCountdown -= dt;
-        if (this.readyCountdown <= 0) {
+        if (this.readyCountdown <= 0 && this.game.autoStart) {
           this.startNextWave();
         }
       }
@@ -11436,7 +11553,7 @@ class WaveManager {
     }
 
     this.state = 'ready';
-    this.readyCountdown = 4;
+    this.readyCountdown = 15; // Dłuższy czas na "Call Early"
     const bonus = 24 + this.currentLevel * 4 + this.currentWave * 8;
     this.game.gold += bonus;
     this.game.score += bonus * 4;
@@ -12941,6 +13058,11 @@ renderMetaUpgrades() {
 update(force = false) {
   const game = this.game;
   const waveManager = game.waveManager;
+
+  if (this.refs.btnStartWave) {
+    const hasBonus = waveManager.state === 'ready' && waveManager.currentWave > 0 && waveManager.readyCountdown > 0;
+    this.refs.btnStartWave.classList.toggle('pulse-early', hasBonus);
+  }
   const currentMission = waveManager.getMission(waveManager.currentLevel) || CAMPAIGN_LEVELS[0];
   const nextWave = waveManager.getNextWaveNumber();
 
@@ -13876,6 +13998,17 @@ loop(time) {
             this.ui.showToast('Wybierz trudność na mapie kampanii.', 'info', 2.2);
             return;
           }
+
+          if (this.waveManager.state === 'ready' && this.waveManager.currentWave > 0) {
+            const earlyBonus = Math.max(0, Math.floor(this.waveManager.readyCountdown * 2));
+            if (earlyBonus > 0) {
+              this.gold += earlyBonus;
+              this.score += earlyBonus * 5;
+              this.particles.addEffect(new FloatingText(MAP_WIDTH * 0.1, 150, `Błyskawiczna fala: +${earlyBonus}g`, '#ffd700', 26, 1.8));
+              this.ui.showToast(`Wcześniejsze wezwanie! Bonus: +${earlyBonus}g`, 'info');
+            }
+          }
+
           if (!this.waveManager.startNextWave()) {
             if (this.waveManager.state === 'spawning') {
               this.ui.showToast('Ta fala już trwa.', 'warn', 1.8);
@@ -13900,6 +14033,13 @@ loop(time) {
         }
 
         onEnemyKilled(enemy) {
+          // XP dla bohatera, jeśli jest w pobliżu (lub globalnie za killa)
+          if (this.hero && !enemy.reachedBase) {
+             const d = distance(this.hero.x, this.hero.y, enemy.cx, enemy.cy);
+             const xpGain = enemy.typeKey === 'boss' ? 150 : 15;
+             if (d < 250) this.hero.gainXp(xpGain);
+             else this.hero.gainXp(xpGain * 0.3); // Mniejszy XP z daleka
+          }
           const buffs = this.getEquipmentBuffs();
           const reward = Math.round(enemy.reward * (buffs.goldMult || 1));
           this.gold += reward;
@@ -14000,6 +14140,7 @@ loop(time) {
 
             setTimeout(() => {
               if (this.paused) return; // Proste zabezpieczenie
+                this.groundEffects.push(new ScorchMark(this, x, y, 100));
               this.particles.explosion(x, y, '#ff6a00', 50, 200);
               this.flashScreen('rgba(255,80,0,0.4)', 0.4);
               this.addShake(18);
