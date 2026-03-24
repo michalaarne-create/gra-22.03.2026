@@ -4455,7 +4455,7 @@
 <body>
   <div id="mainMenu">
     <div class="gameLogo">KINGDOM DEFENSE</div>
-    <button class="btnStartGame" onclick="document.getElementById('mainMenu').classList.add('hidden')">ZACZNIJ BITWĘ</button>
+    <button class="btnStartGame" onclick="document.getElementById('mainMenu').classList.add('hidden'); if(window.offlineTowerDefenseGame) window.offlineTowerDefenseGame.audio.init()">ZACZNIJ BITWĘ</button>
     <div style="margin-top: 30px; color: #777; font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">Professional Studio Polish • v1.0</div>
   </div>
   <div id="viewport">
@@ -8709,6 +8709,7 @@ render(ctx, time, buildMode) {
             this.hp = this.maxHp;
             this.game.particles.addEffect(new FloatingText(this.x, this.y - 40, 'LEVEL UP!', '#fff', 28, 1.5));
             this.game.addShake(5);
+            this.game.audio.levelUp();
             this.game.ui.showToast(`Bohater awansował na poziom ${this.level}!`, 'info');
           }
         }
@@ -9882,6 +9883,10 @@ render(ctx, time, buildMode) {
             const isCrit = Math.random() < (this.critChance || 0);
             const dmg = isCrit ? this.damage * (this.critMult || 2) : this.damage;
             primaryTarget.takeDamage(dmg, 'bullet');
+            // Max Level Gun - Armor Rend
+            if (this.sourceLevel >= 5) {
+              primaryTarget.armor = Math.max(0, primaryTarget.armor - 0.05);
+            }
             if (isCrit) {
               this.game.particles.addEffect(new FloatingText(impactX, impactY - 24, 'CRIT!', '#ff4500', 22, 1.0));
               this.game.addShake(2);
@@ -9895,6 +9900,11 @@ render(ctx, time, buildMode) {
           } else if (this.type === 'ice') {
             primaryTarget.takeDamage(this.damage, 'ice');
             primaryTarget.applySlow(this.slowMultiplier, this.slowDuration);
+            // Max Level Ice - Permafrost Stun
+            if (this.sourceLevel >= 5 && Math.random() < 0.25) {
+               primaryTarget.applySlow(0, 0.8); // Total stop
+               this.game.particles.addEffect(new RingEffect(impactX, impactY, 4, 30, '#fff', 0.2, 0.4));
+            }
             this.game.particles.addEffect(new FloatingText(impactX, impactY - 20, 'Slow!', '#bdf6ff', 14, 0.6));
             if (this.brittleMult && this.brittleDuration) {
               primaryTarget.applyBrittle(this.brittleMult, this.brittleDuration);
@@ -9924,6 +9934,11 @@ render(ctx, time, buildMode) {
                 const amount = this.damage * (0.5 + falloff * 0.5);
                 enemy.takeDamage(amount, 'shell');
               }
+            }
+            // Max Level Cannon - Incendiary Rounds
+            if (this.sourceLevel >= 5) {
+               this.game.groundEffects.push(new ScorchMark(this.game, impactX, impactY, 45, 3.0));
+               this.game.groundEffects.push(new ScorchField(this.game, impactX, impactY, { radius: 50, dps: 20, life: 3.0 }));
             }
             if (this.scorchDps && this.scorchDuration) {
               this.game.groundEffects.push(new ScorchField(this.game, impactX, impactY, {
@@ -10185,6 +10200,79 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class Coin {
+        constructor(game, x, y, value) {
+          this.game = game;
+          this.x = x;
+          this.y = y;
+          this.value = value;
+          this.life = 6.0;
+          this.maxLife = 6.0;
+          this.dead = false;
+          this.collected = false;
+          this.vy = -30 - Math.random() * 40;
+          this.vx = (Math.random() - 0.5) * 40;
+          this.gravity = 140;
+          this.bounce = 0;
+          this.targetY = y + 10 + Math.random() * 10;
+        }
+        update(dt) {
+          if (this.collected) {
+            const dx = 100 - this.x; // Cel: HUD Gold (lewa góra)
+            const dy = 50 - this.y;
+            const d = Math.hypot(dx, dy);
+            if (d < 15) {
+              this.game.gold += this.value;
+              this.game.audio.coin();
+              this.dead = true;
+              return;
+            }
+            this.x += dx * 10 * dt;
+            this.y += dy * 10 * dt;
+            return;
+          }
+
+          this.life -= dt;
+          if (this.life <= 0) this.dead = true;
+
+          if (this.bounce < 2) {
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.vy += this.gravity * dt;
+            if (this.y >= this.targetY) {
+              this.y = this.targetY;
+              this.vy *= -0.5;
+              this.vx *= 0.5;
+              this.bounce++;
+            }
+          }
+
+          // Przyciąganie magnetyczne (z ekwipunku lub kursora)
+          const m = this.game.mouse;
+          if (m && m.onMap && distance(this.x, this.y, m.x, m.y) < 60) {
+            this.collected = true;
+          }
+        }
+        draw(ctx) {
+          const alpha = clamp(this.life / 2, 0, 1);
+          ctx.save();
+          ctx.globalAlpha = this.collected ? 1 : alpha;
+          ctx.translate(this.x, this.y);
+          ctx.beginPath();
+          ctx.arc(0, 0, 6, 0, TAU);
+          ctx.fillStyle = '#ffd700';
+          ctx.fill();
+          ctx.strokeStyle = '#b8860b';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 8px Inter';
+          ctx.textAlign = 'center';
+          ctx.fillText('$', 0, 3);
+          ctx.restore();
+        }
+      }
+
       class FloatingText {
         constructor(x, y, text, color, size = 16, life = 0.8) {
           this.x = x;
@@ -10332,6 +10420,48 @@ render(ctx, time, buildMode) {
             ctx.stroke();
           });
           ctx.restore();
+        }
+      }
+
+      class AudioManager {
+        constructor() {
+          this.ctx = null;
+          this.enabled = false;
+        }
+        init() {
+          if (this.ctx) return;
+          try {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.enabled = true;
+          } catch(e) {}
+        }
+        play(freq, type, duration, vol = 0.1) {
+          if (!this.enabled || !this.ctx) return;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        }
+        shoot() { this.play(180, 'square', 0.08, 0.03); }
+        explode() { this.play(55, 'sawtooth', 0.45, 0.08); }
+        coin() {
+          this.play(880, 'sine', 0.15, 0.04);
+          setTimeout(() => this.play(1320, 'sine', 0.15, 0.04), 40);
+        }
+        levelUp() {
+          [523, 659, 783, 1046].forEach((f, i) => {
+            setTimeout(() => this.play(f, 'sine', 0.4, 0.06), i * 120);
+          });
+        }
+        boss() {
+          this.play(40, 'sawtooth', 1.2, 0.12);
+          this.play(45, 'sawtooth', 1.2, 0.12);
         }
       }
 
@@ -13201,6 +13331,7 @@ update(force = false) {
 
           this.highScore = this.loadHighScore();
           this.map = new GameMap(this);
+          this.audio = new AudioManager();
           this.particles = new ParticleSystem(this);
           this.atmosphere = new AtmosphericSystem(this);
           this.hero = new Hero(this);
@@ -13210,6 +13341,7 @@ update(force = false) {
           this.towers = [];
           this.enemies = [];
           this.projectiles = [];
+          this.coins = [];
           this.activeSkills = [
             { id: 'meteor', name: 'Deszcz Ognia', desc: 'Meteor uderza w wybrany punkt.', icon: '☄', cdWaves: 3, currentCd: 0 },
             { id: 'militia', name: 'Straż Przednia', desc: 'Przywołaj 3 strażników na ścieżkę.', icon: '🛡', cdWaves: 5, currentCd: 0 }
@@ -13662,6 +13794,8 @@ loop(time) {
           }
           this.particles.update(dt);
           this.atmosphere.update(dt);
+          for (let i = 0; i < this.coins.length; i++) this.coins[i].update(dt);
+          this.coins = this.coins.filter(c => !c.dead);
           this.hero.update(dt);
 
           this.enemies = this.enemies.filter((enemy) => !enemy.dead);
@@ -13748,6 +13882,7 @@ loop(time) {
           }
 
           this.particles.draw(ctx);
+          for (let i = 0; i < this.coins.length; i++) this.coins[i].draw(ctx);
           this.atmosphere.drawBirds(ctx);
 
           if (this.paused && this.state === 'playing') {
@@ -14088,22 +14223,35 @@ loop(time) {
           };
           const enemy = type === 'boss' ? new BossEnemy(this, wave, merged) : new Enemy(this, type, wave, merged);
           this.enemies.push(enemy);
+
+          if (type === 'boss') {
+            this.addShake(15);
+            this.flashScreen('rgba(255,0,0,0.2)', 0.5);
+            this.audio.boss();
+            this.ui.showBanner('UWAGA: BOSS NADCHODZI!', `${enemy.name} wchodzi na pole bitwy!`, 'boss', 4.0);
+          }
+
           return enemy;
         }
 
         onEnemyKilled(enemy) {
-          // XP dla bohatera, jeśli jest w pobliżu (lub globalnie za killa)
+          // XP dla bohatera
           if (this.hero && !enemy.reachedBase) {
              const d = distance(this.hero.x, this.hero.y, enemy.cx, enemy.cy);
              const xpGain = enemy.typeKey === 'boss' ? 150 : 15;
              if (d < 250) this.hero.gainXp(xpGain);
-             else this.hero.gainXp(xpGain * 0.3); // Mniejszy XP z daleka
+             else this.hero.gainXp(xpGain * 0.3);
           }
           const buffs = this.getEquipmentBuffs();
           const reward = Math.round(enemy.reward * (buffs.goldMult || 1));
-          this.gold += reward;
+
+          // Spawn monety zamiast bezpośredniego golda
+          if (!enemy.reachedBase) {
+            this.coins.push(new Coin(this, enemy.cx, enemy.cy, reward));
+          }
+
           this.score += enemy.score;
-          this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 18, `+${reward} gold`, '#ffd56a', 18, 0.8));
+          this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 34, `+${enemy.score} XP`, '#aaffff', 14, 0.7));
           this.particles.addEffect(new FloatingText(enemy.cx + 20, enemy.cy - 34, `+${enemy.score} XP`, '#aaffff', 14, 0.7));
 
           if (Math.random() < (buffs.lifeSteal || 0)) {
@@ -15647,6 +15795,9 @@ loop(time) {
 
         update(dt) {
           this.life -= dt;
+          if (Math.random() < 0.05) {
+            this.game.particles.addEffect(new RingEffect(this.cx, this.cy, 2, 60, 'rgba(255,0,0,0.3)', 0.5, 0.5));
+          }
           if (this.life <= 0) {
             this.dead = true;
             return;
@@ -16225,6 +16376,7 @@ loop(time) {
         this.flash = 1;
         this.recoil = 1.0;
         this.muzzleFlash = 1.0;
+        this.game.audio.shoot();
         const stats = this.stats;
         const relics = this.game.relicState || {};
 
@@ -16233,6 +16385,7 @@ loop(time) {
           if (this.branch === 'a') {
             this.game.projectiles.push(new Projectile(this.game, {
               type: 'bullet',
+              sourceLevel: this.level,
               x: this.x + Math.cos(angle) * 18,
               y: this.y + Math.sin(angle) * 18,
               vx: Math.cos(angle) * stats.projectileSpeed,
@@ -16310,6 +16463,7 @@ loop(time) {
           if (this.branch === 'a' || this.branch === 'b') {
             this.game.projectiles.push(new Projectile(this.game, {
               type: 'shell',
+              sourceLevel: this.level,
               x: this.x + Math.cos(angle) * 20,
               y: this.y + Math.sin(angle) * 20,
               vx: Math.cos(angle) * stats.projectileSpeed,
@@ -16361,6 +16515,7 @@ loop(time) {
           if (this.branch === 'a' || this.branch === 'b') {
             this.game.projectiles.push(new Projectile(this.game, {
               type: 'ice',
+              sourceLevel: this.level,
               x: this.x + Math.cos(angle) * 14,
               y: this.y + Math.sin(angle) * 14,
               vx: Math.cos(angle) * stats.projectileSpeed,
@@ -16763,6 +16918,7 @@ loop(time) {
           if (this.timeCooldown <= 0) {
             this.timeCooldown = 6.0;
             this.game.groundEffects.push(new TimeField(this.game, this.cx, this.cy, { radius: 112, life: 5.4 }));
+            this.game.audio.levelUp();
             this.game.ui.showToast('Boss: czas na trakcie gęstnieje!', 'warn', 1.8);
           }
           if (this.portalCooldown <= 0) {
