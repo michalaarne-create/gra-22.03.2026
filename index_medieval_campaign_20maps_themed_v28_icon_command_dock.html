@@ -4374,9 +4374,18 @@
     }
     .inventoryItem:hover { background: rgba(255,255,255,0.12); }
     .inventoryItem.rarity-common { border-color: #ccc; }
-    .inventoryItem.rarity-rare { border-color: #44f; }
-    .inventoryItem.rarity-epic { border-color: #a4a; }
-    .inventoryItem.rarity-legendary { border-color: #fa0; }
+    .inventoryItem.rarity-rare { border-color: #0070dd; box-shadow: inset 0 0 8px rgba(0,112,221,0.3); }
+    .inventoryItem.rarity-epic { border-color: #a335ee; animation: rarityGlowEpic 2.5s infinite; }
+    .inventoryItem.rarity-legendary { border-color: #ff8000; animation: rarityGlowLegendary 1.8s infinite; }
+
+    @keyframes rarityGlowEpic {
+      0%, 100% { box-shadow: 0 0 5px #a335ee; }
+      50% { box-shadow: 0 0 15px #a335ee; }
+    }
+    @keyframes rarityGlowLegendary {
+      0%, 100% { box-shadow: 0 0 8px #ff8000; filter: brightness(1); }
+      50% { box-shadow: 0 0 25px #ff8000; filter: brightness(1.2); }
+    }
 
     .equipmentSlots {
       display: flex;
@@ -8761,6 +8770,56 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class MilitiaUnit {
+        constructor(game, x, y) {
+          this.game = game;
+          this.x = x; this.y = y;
+          this.targetX = x; this.targetY = y;
+          this.speed = 100;
+          this.life = 20.0;
+          this.damage = 6;
+          this.range = 50;
+          this.cooldown = 0;
+          this.dead = false;
+          this.color = '#ccc';
+        }
+        update(dt) {
+          this.life -= dt;
+          if (this.life <= 0) this.dead = true;
+          this.cooldown -= dt;
+          const d = distance(this.x, this.y, this.targetX, this.targetY);
+          if (d > 4) {
+            const angle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+            this.x += Math.cos(angle) * this.speed * dt;
+            this.y += Math.sin(angle) * this.speed * dt;
+          }
+          if (this.cooldown <= 0) {
+            const target = this.game.enemies.find(e => !e.dead && distance(this.x, this.y, e.cx, e.cy) <= this.range);
+            if (target) {
+              target.takeDamage(this.damage, 'hero');
+              target.applySlow(0.4, 0.5);
+              this.cooldown = 0.8;
+            }
+          }
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.globalAlpha = clamp(this.life, 0, 1);
+          if (this.selected) {
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([2,2]);
+            ctx.beginPath(); ctx.ellipse(0, 10, 16, 8, 0, 0, TAU); ctx.stroke();
+          }
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          ctx.beginPath(); ctx.ellipse(0, 10, 12, 5, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = this.color;
+          ctx.beginPath(); ctx.moveTo(-8, 8); ctx.lineTo(8, 8); ctx.lineTo(0, -12); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#fdd'; ctx.beginPath(); ctx.arc(0, -14, 5, 0, TAU); ctx.fill();
+          ctx.strokeStyle = '#999'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(14, -10); ctx.stroke();
+          ctx.restore();
+        }
+      }
+
       class Hero {
         constructor(game) {
           this.game = game;
@@ -10560,6 +10619,9 @@ render(ctx, time, buildMode) {
           this.game = game;
           this.clouds = [];
           this.birds = [];
+          this.weather = 'clear';
+          this.weatherTimer = 20;
+          this.rainDrops = [];
           for (let i = 0; i < 14; i++) {
             this.clouds.push({
               x: Math.random() * MAP_WIDTH,
@@ -10572,6 +10634,21 @@ render(ctx, time, buildMode) {
           }
         }
         update(dt) {
+          this.weatherTimer -= dt;
+          if (this.weatherTimer <= 0) {
+             const types = ['clear', 'rain', 'fog'];
+             this.weather = types[Math.floor(Math.random() * types.length)];
+             this.weatherTimer = 30 + Math.random() * 30;
+          }
+
+          if (this.weather === 'rain') {
+             for (let i = 0; i < 5; i++) {
+                this.rainDrops.push({ x: Math.random() * MAP_WIDTH, y: -20, v: 800 + Math.random() * 400 });
+             }
+          }
+          this.rainDrops.forEach(r => r.y += r.v * dt);
+          this.rainDrops = this.rainDrops.filter(r => r.y < GAME_HEIGHT);
+
           this.clouds.forEach(c => {
             c.x += c.speed * dt;
             if (c.x > MAP_WIDTH + 600) {
@@ -10606,6 +10683,31 @@ render(ctx, time, buildMode) {
             ctx.fill();
           });
           ctx.restore();
+        }
+        drawWeather(ctx) {
+          if (this.weather === 'rain') {
+             ctx.save();
+             ctx.strokeStyle = 'rgba(150, 200, 255, 0.4)';
+             ctx.lineWidth = 1;
+             this.rainDrops.forEach(r => {
+                ctx.beginPath();
+                ctx.moveTo(r.x, r.y);
+                ctx.lineTo(r.x - 10, r.y + 20);
+                ctx.stroke();
+             });
+             ctx.fillStyle = 'rgba(0, 50, 150, 0.1)';
+             ctx.fillRect(0, 0, MAP_WIDTH, GAME_HEIGHT);
+             ctx.restore();
+          } else if (this.weather === 'fog') {
+             ctx.save();
+             ctx.globalAlpha = 0.2;
+             ctx.fillStyle = '#fff';
+             for (let i = 0; i < 5; i++) {
+                irregularBlobPath(ctx, (this.game.time * 50 + i * 400) % MAP_WIDTH, 300 + Math.sin(this.game.time + i) * 100, 600, 300, { roughness: 0.5, seed: i });
+                ctx.fill();
+             }
+             ctx.restore();
+          }
         }
         drawBirds(ctx) {
           ctx.save();
@@ -10664,6 +10766,19 @@ render(ctx, time, buildMode) {
         boss() {
           this.play(40, 'sawtooth', 1.2, 0.12);
           this.play(45, 'sawtooth', 1.2, 0.12);
+        }
+        startMenuMusic() {
+          if (this.menuMusicInterval) return;
+          this.menuMusicInterval = setInterval(() => {
+            this.play(60, 'sine', 0.4, 0.05);
+            if (Math.random() < 0.3) setTimeout(() => this.play(100, 'square', 0.1, 0.02), 250);
+          }, 500);
+        }
+        stopMenuMusic() {
+          if (this.menuMusicInterval) {
+            clearInterval(this.menuMusicInterval);
+            this.menuMusicInterval = null;
+          }
         }
       }
 
@@ -12006,6 +12121,18 @@ class WaveManager {
             this.pendingPan = { clientX: event.clientX, clientY: event.clientY, x, y };
             return;
           }
+
+          // Tap Damage Mechanic
+          if (screenX < MAP_WIDTH && event.button === 0 && !this.game.buildMode) {
+             const tapEnemy = this.game.enemies.find(e => !e.dead && distance(x, y, e.cx, e.cy) < e.radius + 10);
+             if (tapEnemy) {
+                const tapDmg = 1 + Math.floor((this.game.hero?.level || 1) / 2);
+                tapEnemy.takeDamage(tapDmg, 'generic');
+                this.game.particles.spark(x, y, '#fff', 3, 40);
+                this.game.audio.play(600, 'sine', 0.05, 0.02);
+             }
+          }
+
           this.game.handleMapClick(x, y);
         }
 
@@ -13597,6 +13724,7 @@ update(force = false) {
           this.projectiles = [];
           this.coins = [];
           this.meteors = [];
+          this.militia = [];
           this.comboCount = 0;
           this.comboTimer = 0;
           this.activeSkills = [
@@ -14065,6 +14193,8 @@ loop(time) {
           this.coins = this.coins.filter(c => !c.dead);
           for (let i = 0; i < this.meteors.length; i++) this.meteors[i].update(dt);
           this.meteors = this.meteors.filter(m => !m.dead);
+          for (let i = 0; i < this.militia.length; i++) this.militia[i].update(dt);
+          this.militia = this.militia.filter(m => !m.dead);
           this.hero.update(dt);
           const ultBtn = document.getElementById('heroUltBtn');
           if (ultBtn) {
@@ -14160,7 +14290,9 @@ loop(time) {
           this.particles.draw(ctx);
           for (let i = 0; i < this.coins.length; i++) this.coins[i].draw(ctx);
           for (let i = 0; i < this.meteors.length; i++) this.meteors[i].draw(ctx);
+          for (let i = 0; i < this.militia.length; i++) this.militia[i].draw(ctx);
           this.atmosphere.drawBirds(ctx);
+          this.atmosphere.drawWeather(ctx);
 
           if (this.paused && this.state === 'playing') {
             ctx.fillStyle = 'rgba(22,12,6,0.34)';
@@ -14381,6 +14513,16 @@ loop(time) {
           if (this.state !== 'playing' || this.paused) return;
           if (x >= MAP_WIDTH || y < 0 || y > GAME_HEIGHT) return;
 
+          // Przesuwanie wybranej milicji
+          const selectedMilitia = this.militia.find(m => m.selected);
+          if (selectedMilitia) {
+            selectedMilitia.targetX = x;
+            selectedMilitia.targetY = y;
+            selectedMilitia.selected = false;
+            this.particles.addEffect(new RingEffect(x, y, 4, 35, '#fff', 0.3, 0.4));
+            return;
+          }
+
           if (this.hero.selected) {
             this.hero.targetX = x;
             this.hero.targetY = y;
@@ -14399,6 +14541,16 @@ loop(time) {
             this.tryPlaceTower(x, y);
             return;
           }
+
+          // Wybór milicji
+          const mUnit = this.militia.find(m => !m.dead && distance(x, y, m.x, m.y) < 30);
+          if (mUnit) {
+            this.militia.forEach(m => m.selected = false);
+            mUnit.selected = true;
+            this.ui.showToast('Wybierz cel dla oddziału milicji', 'info');
+            return;
+          }
+
           const tower = this.getTowerAt(x, y);
           this.selectTower(tower);
           if (!tower) {
@@ -14697,18 +14849,13 @@ loop(time) {
           } else if (skill.id === 'militia') {
             this.ui.showToast('Wysyłanie posiłków...', 'info');
             for (let i = 0; i < 3; i += 1) {
-              const ox = (i - 1) * 30;
+              const ox = (i - 1) * 35;
               setTimeout(() => {
                 this.flashScreen('rgba(255,255,255,0.1)', 0.1);
                 this.addShake(4);
-                this.particles.spawnEnemy(x + ox, y, '#fff');
-                this.particles.addEffect(new RingEffect(x + ox, y, 6, 40, '#fff', 0.3, 0.4));
-                this.enemies.forEach(enemy => {
-                  if (!enemy.dead && distance(x + ox, y, enemy.cx, enemy.cy) <= 60) {
-                    enemy.applySlow(0.2, 5.0);
-                  }
-                });
-              }, i * 200);
+                this.militia.push(new MilitiaUnit(this, x + ox, y));
+                this.particles.addEffect(new RingEffect(x + ox, y, 6, 50, '#fff', 0.4, 0.5));
+              }, i * 150);
             }
           }
 
@@ -17557,6 +17704,9 @@ loop(time) {
 
       const game = new Game();
       window.offlineTowerDefenseGame = game;
+      document.addEventListener('click', () => {
+        if(game.audio) { game.audio.init(); game.audio.startMenuMusic(); }
+      }, { once: true });
       const intro = document.getElementById('introCard');
       if (intro) intro.remove();
     })();
