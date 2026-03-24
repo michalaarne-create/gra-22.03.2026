@@ -13597,6 +13597,8 @@ update(force = false) {
           this.projectiles = [];
           this.coins = [];
           this.meteors = [];
+          this.comboCount = 0;
+          this.comboTimer = 0;
           this.activeSkills = [
             { id: 'meteor', name: 'Deszcz Ognia', desc: 'Meteor uderza w wybrany punkt.', icon: '☄', cdWaves: 3, currentCd: 0 },
             { id: 'militia', name: 'Straż Przednia', desc: 'Przywołaj 3 strażników na ścieżkę.', icon: '🛡', cdWaves: 5, currentCd: 0 }
@@ -14031,6 +14033,9 @@ loop(time) {
 
         update(dt) {
           this.time += dt;
+          this.comboTimer = Math.max(0, (this.comboTimer || 0) - dt);
+          if (this.comboTimer <= 0) this.comboCount = 0;
+
           this.screenFlashAlpha = Math.max(0, this.screenFlashAlpha - dt * 0.85);
           this.shake = Math.max(0, this.shake - dt * 14);
 
@@ -14190,13 +14195,17 @@ loop(time) {
             ctx.globalAlpha = alpha;
             ctx.translate(start.x, start.y + bounce);
 
-            // Ikona mieczy
-            ctx.fillStyle = '#ff4500';
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#ff4500';
-            ctx.font = '32px Inter';
+            // Ikona konkretnego wroga (glif z ENEMY_TYPES)
+            const nextWaveData = wm.levelWaves[wm.currentWave] || [];
+            const dominantType = nextWaveData.length > 0 ? nextWaveData[0].type : 'basic';
+            const enemyInfo = ENEMY_TYPES[dominantType] || { glyph: '⚔' };
+
+            ctx.fillStyle = enemyInfo.color || '#ff4500';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = ctx.fillStyle;
+            ctx.font = '900 36px Inter';
             ctx.textAlign = 'center';
-            ctx.fillText('⚔️', 0, -40);
+            ctx.fillText(enemyInfo.glyph || '⚔', 0, -35);
 
             // Reset cienia przed rysowaniem linii
             ctx.shadowBlur = 0;
@@ -14566,6 +14575,20 @@ loop(time) {
           }
 
           this.score += enemy.score;
+
+          // Combo System
+          this.comboCount = (this.comboCount || 0) + 1;
+          this.comboTimer = 2.0;
+          if (this.comboCount >= 3) {
+            const labels = { 3: 'TRIPLE KILL!', 5: 'MEGA KILL!', 8: 'UNSTOPPABLE!', 12: 'WICKED SICK!', 20: 'GODLIKE!!!' };
+            const label = labels[this.comboCount];
+            if (label) {
+              this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 60, label, '#ff00ff', 32, 1.5));
+              this.addShake(this.comboCount * 0.5);
+              if (this.audio) this.audio.play(300 + this.comboCount * 20, 'square', 0.2, 0.1);
+            }
+          }
+
           this.particles.addEffect(new FloatingText(enemy.cx, enemy.cy - 34, `+${enemy.score} XP`, '#aaffff', 14, 0.7));
           this.particles.addEffect(new FloatingText(enemy.cx + 20, enemy.cy - 34, `+${enemy.score} XP`, '#aaffff', 14, 0.7));
 
@@ -14575,9 +14598,20 @@ loop(time) {
           }
 
           if (enemy instanceof BossEnemy) {
-            this.ui.showToast(`Boss pokonany! +${reward} gold.`, 'info', 3.0);
-            this.flashScreen('rgba(255,220,160,0.12)', 0.12);
-            this.addShake(6);
+            this.ui.showToast(`BOSS POKONANY! +${reward} gold.`, 'info', 4.0);
+            this.flashScreen('#fff', 0.8);
+            this.addShake(25);
+
+            // Epicki Final Blow Effect (Slo-mo)
+            const oldSpeed = this.speed;
+            this.speed = 0.1;
+            setTimeout(() => { this.speed = oldSpeed; }, 800);
+
+            // Fala uderzeniowa po śmierci bossa
+            this.particles.addEffect(new RingEffect(enemy.cx, enemy.cy, 10, 500, '#fff', 0.6, 0.8));
+            this.enemies.forEach(e => {
+              if (!e.dead) e.pathDistance = Math.max(0, e.pathDistance - 50);
+            });
 
             // Boss loot drop
             const loot = EQUIPMENT_LIBRARY[Math.floor(Math.random() * EQUIPMENT_LIBRARY.length)];
@@ -16008,6 +16042,8 @@ loop(time) {
         get() {
           ensureTowerPackState(this);
           const meta = this.game.metaUpgrades || {};
+          const hero = this.game.hero;
+          const commanderBonus = (hero && distance(this.x, this.y, hero.x, hero.y) < 150) ? 0.2 : 0;
           let base;
           if (this.level <= 3 || !this.branch) {
             base = this.config.levels[Math.min(this.level - 1, 2)];
@@ -16018,9 +16054,10 @@ loop(time) {
           const buffs = this.game.getEquipmentBuffs();
           return {
             ...base,
-            damage: base.damage * (buffs.damageMult || 1) * (1 + (meta.towerDmg || 0)),
-            range: base.range * (buffs.rangeMult || 1) * (1 + (meta.towerRange || 0)),
-            fireRate: base.fireRate * (buffs.fireRateMult || 1)
+            damage: base.damage * (buffs.damageMult || 1) * (1 + (meta.towerDmg || 0)) * (1 + commanderBonus),
+            range: base.range * (buffs.rangeMult || 1) * (1 + (meta.towerRange || 0)) * (1 + commanderBonus),
+            fireRate: base.fireRate * (buffs.fireRateMult || 1),
+            isCommanded: commanderBonus > 0
           };
         }
       });
@@ -16636,6 +16673,13 @@ loop(time) {
           const colors = { gun: '#3d5a27', cannon: '#5d4a3e', ice: '#a0d8ef', laser: '#4b0082' };
           this.game.particles.leaf(this.x, this.y, colors[this.typeKey] || '#3d5a27');
         }
+
+        // Aura legendarnych wież (Level 5+)
+        if (this.level >= 5 && !this.game.paused && Math.random() < 0.05) {
+          const auraColors = { gun: '#0f0', cannon: '#f40', ice: '#0ff', laser: '#f0f' };
+          const color = auraColors[this.typeKey] || '#fff';
+          this.game.particles.addEffect(new RingEffect(this.x, this.y, 10, 45, color, 0.2, 0.8));
+        }
         this.cooldown -= dt;
         this.chainSuppressedTimer = Math.max(0, this.chainSuppressedTimer - dt);
         this.slowFireTimer = Math.max(0, this.slowFireTimer - dt);
@@ -16986,6 +17030,14 @@ loop(time) {
       const originalTowerDraw = Tower.prototype.draw;
       Tower.prototype.draw = function drawTowerPack(ctx, time, selected, hovered) {
         ensureTowerPackState(this);
+        if (this.stats.isCommanded) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.globalAlpha = 0.2 + Math.sin(time * 5) * 0.1;
+          ctx.fillStyle = '#ffd700';
+          ctx.beginPath(); ctx.arc(0, 0, 45, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
         if (!this.branch || this.level <= 3) {
           originalTowerDraw.call(this, ctx, time, selected, hovered);
           if (this.chainSuppressedTimer > 0 || this.slowFireTimer > 0) {
