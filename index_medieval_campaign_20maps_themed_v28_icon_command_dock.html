@@ -4280,6 +4280,16 @@
       transition: all 0.2s;
     }
     .heroPortrait.active { border-color: #0f0; box-shadow: 0 0 20px #0f0; transform: scale(1.1); }
+    .godPowerBar {
+      position: absolute; top: 125px; left: 22px;
+      width: 68px; height: 12px; background: rgba(0,0,0,0.6);
+      border: 2px solid #fff; border-radius: 6px; overflow: hidden;
+      z-index: 1001;
+    }
+    .godPowerFill {
+      height: 100%; width: 0%; background: #fff;
+      box-shadow: 0 0 15px #fff; transition: width 0.2s;
+    }
     .heroUltBtn {
       position: absolute; bottom: -12px; right: -12px;
       width: 42px; height: 42px; border-radius: 50%;
@@ -4613,6 +4623,7 @@
             <div id="campaignNodes"></div>
           </div>
 
+          <div class="godPowerBar" title="Moc Boga (Klawisz G po naładowaniu)"><div id="godPowerFill" class="godPowerFill"></div></div>
           <div id="heroDock">
             <div id="heroPortrait" class="heroPortrait" title="Paladyn: Kliknij by wybrać i przemieścić" onclick="window.offlineTowerDefenseGame.toggleHeroSelection()">🛡️</div>
             <button id="heroUltBtn" class="heroUltBtn" title="Młot Sprawiedliwości (Aktywna)" onclick="window.offlineTowerDefenseGame.hero.useUltimate()">⚡</button>
@@ -4843,7 +4854,9 @@
         armored: { name: 'Egzekutor w płytach', hp: 156, speed: 104, reward: 20, radius: 15, color: '#a8536e', accent: '#ffd1df', armor: 0.36, magicResist: 0.22, score: 30, slowVulnerability: 0.72, role: 'Anti-mage', density: 'Średnia', glyph: '⛊', abilities: ['Spellguard', 'Pancerz'], desc: 'Przyjmuje strzały na klatę i lepiej znosi magię niż zwykłe cele.' },
         flying: { name: 'Nocny żaglowiec', hp: 94, speed: 152, reward: 18, radius: 13, color: '#7e69e8', accent: '#efe7ff', armor: 0.04, magicResist: 0.18, score: 30, slowVulnerability: 0.46, flying: true, role: 'Powietrzny rajd', density: 'Średnia', glyph: '🜂', abilities: ['Szybowanie', 'Skręt'], desc: 'Unosi się poza zwykłym ruchem drogi, więc wymaga lepszego fokusowania ognia.' },
         necromancer: { name: 'Nekromanta', hp: 180, speed: 70, reward: 45, radius: 16, color: '#4b0082', accent: '#da70d6', armor: 0.1, magicResist: 0.4, score: 100, slowVulnerability: 0.9, role: 'Wsparcie', density: 'Rzadka', glyph: '💀', abilities: ['Wskrzeszanie'], desc: 'Niebezpieczny mag. Przywołuje szkielety z poległych sojuszników.' },
-        skeleton: { name: 'Szkielet', hp: 30, speed: 110, reward: 2, radius: 11, color: '#eee', accent: '#888', armor: 0, magicResist: 0, score: 5, slowVulnerability: 1.2, role: 'Mięso armatnie', glyph: '🦴', abilities: ['Kruchość'], desc: 'Słaby, ale upierdliwy przywołaniec.' }
+        skeleton: { name: 'Szkielet', hp: 30, speed: 110, reward: 2, radius: 11, color: '#eee', accent: '#888', armor: 0, magicResist: 0, score: 5, slowVulnerability: 1.2, role: 'Mięso armatnie', glyph: '🦴', abilities: ['Kruchość'], desc: 'Słaby, ale upierdliwy przywołaniec.' },
+        healer: { name: 'Kapłan Pustki', hp: 140, speed: 85, reward: 35, radius: 15, color: '#2ecc71', accent: '#aaffaa', armor: 0.05, magicResist: 0.3, score: 60, slowVulnerability: 1.0, role: 'Wsparcie', density: 'Rzadka', glyph: '✚', abilities: ['Grupowe leczenie'], desc: 'Leczy rannych sojuszników w pobliżu. Zabij go szybko!' },
+        shielder: { name: 'Strażnik Pola', hp: 210, speed: 80, reward: 40, radius: 17, color: '#3498db', accent: '#aaddff', armor: 0.2, magicResist: 0.1, score: 70, slowVulnerability: 0.85, role: 'Obrońca', density: 'Rzadka', glyph: '🛡', abilities: ['Aura Pancerza'], desc: 'Generuje pole siłowe zwiększające pancerz wszystkich wrogów w zasięgu.' }
       };
 
       const BOSS_ARCHETYPES = {
@@ -8820,6 +8833,50 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class MapTrap {
+        constructor(game, x, y, type) {
+          this.game = game;
+          this.x = x; this.y = y;
+          this.type = type || 'logs';
+          this.cd = 0;
+          this.maxCd = 45;
+          this.radius = 42;
+          this.seed = Math.random() * 100;
+        }
+        update(dt) { this.cd = Math.max(0, this.cd - dt); }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.globalAlpha = this.cd > 0 ? 0.3 : 1;
+          if (this.type === 'logs') {
+            ctx.fillStyle = '#6d4c41';
+            for (let i = 0; i < 3; i++) ctx.fillRect(-15, -18 + i * 12, 30, 8);
+          } else {
+            ctx.fillStyle = '#757575';
+            irregularBlobPath(ctx, 0, 0, 26, 22, { roughness: 0.4, seed: this.seed });
+            ctx.fill();
+          }
+          if (this.cd <= 0) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(0, 0, 45 + Math.sin(this.game.time * 5) * 5, 0, TAU); ctx.stroke();
+          }
+          ctx.restore();
+        }
+        trigger() {
+          if (this.cd > 0) return;
+          this.cd = this.maxCd;
+          this.game.addShake(15);
+          this.game.audio.explode();
+          this.game.particles.explosion(this.x, this.y, '#f60', 30, 160);
+          this.game.enemies.forEach(e => {
+            if (!e.dead && distance(this.x, this.y, e.cx, e.cy) < 180) {
+              e.takeDamage(250, 'shell');
+              e.applySlow(0.1, 2.0);
+            }
+          });
+        }
+      }
+
       class Hero {
         constructor(game) {
           this.game = game;
@@ -9039,6 +9096,28 @@ render(ctx, time, buildMode) {
         update(dt) {
           if (this.dead) return;
 
+          if (this.typeKey === 'healer' && !this.game.paused) {
+             this.healCd = (this.healCd || 0) - dt;
+             if (this.healCd <= 0) {
+                this.healCd = 2.5;
+                this.game.enemies.forEach(e => {
+                   if (!e.dead && e !== this && distance(this.cx, this.cy, e.cx, e.cy) < 120) {
+                      e.hp = Math.min(e.maxHp, e.hp + 15);
+                      this.game.particles.addEffect(new FloatingText(e.cx, e.cy - 10, '+HP', '#2ecc71', 12, 0.5));
+                   }
+                });
+                this.game.particles.addEffect(new RingEffect(this.cx, this.cy, 5, 120, '#2ecc71', 0.3, 0.5));
+             }
+          }
+
+          if (this.typeKey === 'shielder') {
+             this.game.enemies.forEach(e => {
+                if (!e.dead && e !== this && distance(this.cx, this.cy, e.cx, e.cy) < 130) {
+                   e.armorBonusFromAura = 0.25;
+                }
+             });
+          }
+
           if (this.typeKey === 'necromancer') {
              this.summonCd = (this.summonCd || 0) - dt;
              if (this.summonCd <= 0) {
@@ -9124,7 +9203,9 @@ render(ctx, time, buildMode) {
           if (this.dead) return false;
           const isDot = sourceType === 'poison' || sourceType === 'burn';
           const isMagic = sourceType === 'ice' || sourceType === 'laser';
-          const fortifiedArmor = this.typeKey === 'tank' && this.fortifyPulse > 0 ? Math.min(0.88, this.armor + 0.16) : this.armor;
+          const armorAura = this.armorBonusFromAura || 0;
+          this.armorBonusFromAura = 0; // Reset for next frame
+          const fortifiedArmor = this.typeKey === 'tank' && this.fortifyPulse > 0 ? Math.min(0.9, this.armor + 0.16 + armorAura) : Math.min(0.9, this.armor + armorAura);
           const amplified = amount * (isDot ? 1 : (this.brittleMult || 1));
           const armorFactor = isDot ? (1 - fortifiedArmor * 0.35) : (1 - fortifiedArmor);
           const magicFactor = isMagic ? (1 - this.magicResist) : 1;
@@ -9173,6 +9254,15 @@ render(ctx, time, buildMode) {
         }
         draw(ctx) {
           if (this.dead) return;
+
+          // Aury jednostek wsparcia
+          if (this.typeKey === 'shielder') {
+            ctx.save();
+            ctx.globalAlpha = 0.2 + Math.sin(this.game.time * 3) * 0.1;
+            ctx.fillStyle = '#3498db';
+            ctx.beginPath(); ctx.arc(this.cx, this.cy, 130, 0, TAU); ctx.fill();
+            ctx.restore();
+          }
           const angle = Math.atan2(this.vy, this.vx);
           const r = this.radius;
           const lift = this.flying
@@ -12173,6 +12263,15 @@ class WaveManager {
           if (key === '1') this.game.ui.handleSkillClick('meteor');
           if (key === '2') this.game.ui.handleSkillClick('militia');
           if (key === '3') this.game.toggleHeroSelection();
+          if (key === 'g') {
+             if (this.game.godPower >= 100) {
+                this.game.isGodActive = true;
+                this.game.ui.showToast('PALEC BOŻY AKTYWNY! MAŻ PO MAPIE!', 'boss');
+                this.game.audio.boss();
+             } else {
+                this.game.ui.showToast('Moc ładuje się zabójstwami...', 'warn');
+             }
+          }
           if (key === 'h') {
              this.game.camera.x = this.game.hero.x;
              this.game.camera.y = this.game.hero.y;
@@ -13725,6 +13824,9 @@ update(force = false) {
           this.coins = [];
           this.meteors = [];
           this.militia = [];
+          this.traps = [];
+          this.godPower = 0;
+          this.isGodActive = false;
           this.comboCount = 0;
           this.comboTimer = 0;
           this.activeSkills = [
@@ -13991,6 +14093,12 @@ prepareLevel(level, options = {}) {
   const battleMods = options.battleModifiers || this.currentBattleModifiers || {};
   this.selectedLevel = missionLevel;
   this.map = new GameMap(this, missionLevel);
+  this.traps = [];
+  // Spawn pułapek przy ścieżce
+  for (let i = 2; i < this.map.path.points.length - 2; i += 5) {
+     const p = this.map.path.points[i];
+     this.traps.push(new MapTrap(this, p.x + (i % 2 === 0 ? 60 : -60), p.y + (i % 3 === 0 ? 40 : -40), i % 2 === 0 ? 'logs' : 'boulder'));
+  }
   this.state = 'playing';
   this.paused = false;
   this.speed = 1;
@@ -14161,8 +14269,29 @@ loop(time) {
 
         update(dt) {
           this.time += dt;
+
+          const gFill = document.getElementById('godPowerFill');
+          if (gFill) {
+            gFill.style.width = `${this.godPower}%`;
+            gFill.style.background = this.godPower >= 100 ? '#fff' : '#aaa';
+          }
+          if (this.isGodActive) {
+            this.godPower -= dt * 40;
+            if (this.godPower <= 0) {
+              this.godPower = 0;
+              this.isGodActive = false;
+              this.ui.showToast('Moc wyczerpana', 'info');
+            }
+          }
+
           this.comboTimer = Math.max(0, (this.comboTimer || 0) - dt);
           if (this.comboTimer <= 0) this.comboCount = 0;
+
+          // Combo Overdrive Logic
+          this.isRageMode = this.comboCount >= 10;
+          if (this.isRageMode) {
+             this.shake = Math.max(this.shake, 1);
+          }
 
           this.screenFlashAlpha = Math.max(0, this.screenFlashAlpha - dt * 0.85);
           this.shake = Math.max(0, this.shake - dt * 14);
@@ -14195,6 +14324,7 @@ loop(time) {
           this.meteors = this.meteors.filter(m => !m.dead);
           for (let i = 0; i < this.militia.length; i++) this.militia[i].update(dt);
           this.militia = this.militia.filter(m => !m.dead);
+          for (let i = 0; i < this.traps.length; i++) this.traps[i].update(dt);
           this.hero.update(dt);
           const ultBtn = document.getElementById('heroUltBtn');
           if (ultBtn) {
@@ -14240,6 +14370,7 @@ loop(time) {
           ctx.translate(-this.view.x, -this.view.y);
 
           this.map.render(ctx, this.time, this.buildMode);
+          this.traps.forEach(t => t.draw(ctx));
           this.atmosphere.drawClouds(ctx);
           this.drawSpawnIndicators(ctx);
           this.drawThreatIndicators(ctx);
@@ -14354,6 +14485,26 @@ loop(time) {
           }
         }
 
+        drawGodPower(ctx) {
+          if (this.isGodActive) {
+            const m = this.mouse;
+            if (!m.onMap) return;
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            const grad = ctx.createRadialGradient(m.x, m.y, 5, m.x, m.y, 70);
+            grad.addColorStop(0, '#fff'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(m.x, m.y, 70, 0, TAU); ctx.fill();
+            this.enemies.forEach(e => {
+              if (!e.dead && distance(m.x, m.y, e.cx, e.cy) < 75) {
+                e.takeDamage(6, 'laser');
+                this.particles.spark(e.cx, e.cy, '#fff', 1, 30);
+              }
+            });
+            this.addShake(2);
+            ctx.restore();
+          }
+        }
         drawThreatIndicators(ctx) {
           const cam = this.camera;
           const zoom = cam.zoom;
@@ -14553,6 +14704,14 @@ loop(time) {
 
           const tower = this.getTowerAt(x, y);
           this.selectTower(tower);
+
+          if (this.traps) {
+             const trap = this.traps.find(t => distance(x, y, t.x, t.y) < 60);
+             if (trap) {
+                trap.trigger();
+                return;
+             }
+          }
           if (!tower) {
             this.particles.butterfly(x, y);
           }
@@ -14727,6 +14886,7 @@ loop(time) {
           }
 
           this.score += enemy.score;
+          this.godPower = Math.min(100, (this.godPower || 0) + 1.2);
 
           // Combo System
           this.comboCount = (this.comboCount || 0) + 1;
@@ -16203,7 +16363,7 @@ loop(time) {
             ...base,
             damage: base.damage * (buffs.damageMult || 1) * (1 + (meta.towerDmg || 0)) * (1 + commanderBonus),
             range: base.range * (buffs.rangeMult || 1) * (1 + (meta.towerRange || 0)) * (1 + commanderBonus),
-            fireRate: base.fireRate * (buffs.fireRateMult || 1),
+            fireRate: base.fireRate * (buffs.fireRateMult || 1) * (this.game.isRageMode ? 1.25 : 1),
             isCommanded: commanderBonus > 0
           };
         }
