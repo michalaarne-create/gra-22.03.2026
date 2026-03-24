@@ -1195,6 +1195,25 @@
       0% { transform: scale(0) rotate(-45deg); opacity: 0; }
       100% { transform: scale(1) rotate(0); opacity: 1; }
     }
+    .victoryChest {
+      font-size: 84px;
+      margin: 20px 0;
+      cursor: pointer;
+      display: none;
+      filter: drop-shadow(0 0 30px #ffd700);
+      animation: chestShake 0.8s infinite;
+      transition: all 0.5s;
+    }
+    .victoryChest.open { animation: chestOpen 0.6s forwards; cursor: default; }
+    @keyframes chestShake {
+      0%, 100% { transform: rotate(-5deg) scale(1); }
+      50% { transform: rotate(5deg) scale(1.1); }
+    }
+    @keyframes chestOpen {
+      0% { transform: scale(1.1); }
+      50% { transform: scale(1.4); opacity: 1; }
+      100% { transform: scale(0.5); opacity: 0; }
+    }
     #overlayScreen {
       position: absolute;
       inset: 0;
@@ -4635,6 +4654,7 @@
             <div class="overlayCard">
               <div id="overlayTitle" class="overlayTitle">Game Over</div>
               <div id="overlayStars" class="overlayStars"></div>
+              <div id="victoryChest" class="victoryChest" title="Kliknij skrzynię, aby odebrać łupy">🎁</div>
               <div id="overlaySubtitle" class="overlaySubtitle"></div>
               <div class="overlayStats">
                 <div class="overlayStat">
@@ -8708,8 +8728,18 @@ render(ctx, time, buildMode) {
             this.maxHp = Math.round(this.maxHp * 1.2);
             this.hp = this.maxHp;
             this.game.particles.addEffect(new FloatingText(this.x, this.y - 40, 'LEVEL UP!', '#fff', 28, 1.5));
-            this.game.addShake(5);
+            this.game.particles.addEffect(new RingEffect(this.x, this.y, 10, 250, '#fff', 0.4, 0.6));
+            this.game.addShake(12);
             this.game.audio.levelUp();
+
+            // Shockwave logic
+            this.game.enemies.forEach(enemy => {
+              if (!enemy.dead && distance(this.x, this.y, enemy.cx, enemy.cy) < 250) {
+                enemy.pathDistance = Math.max(0, enemy.pathDistance - 40);
+                enemy.applySlow(0, 1.5); // Stun
+              }
+            });
+
             this.game.ui.showToast(`Bohater awansował na poziom ${this.level}!`, 'info');
           }
         }
@@ -10200,6 +10230,63 @@ render(ctx, time, buildMode) {
         }
       }
 
+      class FallingMeteor {
+        constructor(game, tx, ty) {
+          this.game = game;
+          this.tx = tx;
+          this.ty = ty;
+          this.x = tx - 300;
+          this.y = -400;
+          this.speed = 800;
+          this.dead = false;
+        }
+        update(dt) {
+          const dx = this.tx - this.x;
+          const dy = this.ty - this.y;
+          const d = Math.hypot(dx, dy);
+          if (d < this.speed * dt) {
+            this.impact();
+            this.dead = true;
+            return;
+          }
+          const angle = Math.atan2(dy, dx);
+          this.x += Math.cos(angle) * this.speed * dt;
+          this.y += Math.sin(angle) * this.speed * dt;
+          // Ogon ognia
+          this.game.particles.burst(this.x, this.y, '#ff6a00', 2, 50, [4, 8], 20);
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(Math.atan2(this.ty - this.y, this.tx - this.x) + Math.PI/2);
+          // Skała
+          ctx.fillStyle = '#444';
+          irregularBlobPath(ctx, 0, 0, 30, 45, { roughness: 0.4, seed: 42 });
+          ctx.fill();
+          // Ogień
+          ctx.fillStyle = '#ff4500';
+          ctx.beginPath();
+          ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.lineTo(0, 60); ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        impact() {
+          const { game, tx, ty } = this;
+          game.groundEffects.push(new ScorchMark(game, tx, ty, 100));
+          game.particles.gibs(tx, ty, '#444', 12);
+          game.particles.explosion(tx, ty, '#ff6a00', 60, 220);
+          game.flashScreen('rgba(255,80,0,0.5)', 0.4);
+          game.addShake(22);
+          game.audio.explode();
+          game.enemies.forEach(enemy => {
+            if (!enemy.dead && distance(tx, ty, enemy.cx, enemy.cy) <= 140) {
+              enemy.takeDamage(750, 'burn');
+            }
+          });
+          game.ui.showToast('DESZCZ OGNIA!', 'info');
+        }
+      }
+
       class Coin {
         constructor(game, x, y, value) {
           this.game = game;
@@ -10321,6 +10408,7 @@ render(ctx, time, buildMode) {
           this.maxLife = life;
           this.gravity = gravity;
           this.shape = shape;
+          this.groundY = y + 15 + Math.random() * 20;
         }
 
         update(dt) {
@@ -10328,6 +10416,13 @@ render(ctx, time, buildMode) {
           this.x += this.vx * dt;
           this.y += this.vy * dt;
           this.vy += this.gravity * dt;
+
+          if (this.shape === 'square' && this.y > this.groundY) {
+            this.y = this.groundY;
+            this.vy *= -0.4;
+            this.vx *= 0.6;
+          }
+
           this.size *= 1 - dt * 0.65;
         }
 
@@ -10575,6 +10670,21 @@ render(ctx, time, buildMode) {
 
         baseHit(x, y) {
           this.explosion(x, y, '#ff8b8b', 16, 92);
+        }
+
+        gibs(x, y, color, count = 5) {
+          for (let i = 0; i < count; i++) {
+            this.particles.push(new Particle(
+              x, y,
+              (Math.random() - 0.5) * 150,
+              -50 - Math.random() * 150,
+              rand(3, 6),
+              color,
+              rand(1.5, 3.0),
+              400,
+              'square'
+            ));
+          }
         }
 
         butterfly(x, y) {
@@ -13021,7 +13131,30 @@ class WaveManager {
 
         showLevelCompleteScreen(level, nextLevel, pendingEvent = null) {
           this.refs.overlayScreen.classList.add('show');
-          this.refs.overlayTitle.textContent = `Poziom ${level} ukończony`;
+          this.refs.overlayTitle.textContent = `POZIOM ${level} OCZYSZCZONY!`;
+
+          const chest = document.getElementById('victoryChest');
+          const stats = this.refs.overlayScreen.querySelector('.overlayStats');
+          const buttons = this.refs.overlayScreen.querySelector('.overlayButtons');
+          const sub = document.getElementById('overlaySubtitle');
+
+          chest.style.display = 'block';
+          chest.classList.remove('open');
+          stats.style.opacity = '0';
+          buttons.style.opacity = '0';
+          sub.style.opacity = '0';
+
+          chest.onclick = () => {
+            chest.classList.add('open');
+            this.game.audio.levelUp();
+            setTimeout(() => {
+               chest.style.display = 'none';
+               stats.style.opacity = '1';
+               buttons.style.opacity = '1';
+               sub.style.opacity = '1';
+               this.showToast('Zdobyto nowe łupy i gwiazdki!', 'boss');
+            }, 600);
+          };
 
           const lives = this.game.lives;
           let starsCount = 1;
@@ -13342,6 +13475,7 @@ update(force = false) {
           this.enemies = [];
           this.projectiles = [];
           this.coins = [];
+          this.meteors = [];
           this.activeSkills = [
             { id: 'meteor', name: 'Deszcz Ognia', desc: 'Meteor uderza w wybrany punkt.', icon: '☄', cdWaves: 3, currentCd: 0 },
             { id: 'militia', name: 'Straż Przednia', desc: 'Przywołaj 3 strażników na ścieżkę.', icon: '🛡', cdWaves: 5, currentCd: 0 }
@@ -13796,6 +13930,8 @@ loop(time) {
           this.atmosphere.update(dt);
           for (let i = 0; i < this.coins.length; i++) this.coins[i].update(dt);
           this.coins = this.coins.filter(c => !c.dead);
+          for (let i = 0; i < this.meteors.length; i++) this.meteors[i].update(dt);
+          this.meteors = this.meteors.filter(m => !m.dead);
           this.hero.update(dt);
 
           this.enemies = this.enemies.filter((enemy) => !enemy.dead);
@@ -13837,6 +13973,7 @@ loop(time) {
           this.map.render(ctx, this.time, this.buildMode);
           this.atmosphere.drawClouds(ctx);
           this.drawSpawnIndicators(ctx);
+          this.drawThreatIndicators(ctx);
           this.hero.draw(ctx);
 
           for (let i = 0; i < this.groundEffects.length; i += 1) {
@@ -13883,6 +14020,7 @@ loop(time) {
 
           this.particles.draw(ctx);
           for (let i = 0; i < this.coins.length; i++) this.coins[i].draw(ctx);
+          for (let i = 0; i < this.meteors.length; i++) this.meteors[i].draw(ctx);
           this.atmosphere.drawBirds(ctx);
 
           if (this.paused && this.state === 'playing') {
@@ -13939,6 +14077,49 @@ loop(time) {
 
             ctx.restore();
           }
+        }
+
+        drawThreatIndicators(ctx) {
+          const cam = this.camera;
+          const zoom = cam.zoom;
+          const halfW = (MAP_WIDTH / 2) / zoom;
+          const halfH = (GAME_HEIGHT / 2) / zoom;
+          const viewLeft = cam.x - halfW;
+          const viewRight = cam.x + halfW;
+          const viewTop = cam.y - halfH;
+          const viewBottom = cam.y + halfH;
+
+          this.enemies.forEach(enemy => {
+            if (enemy.dead) return;
+            // Sprawdzamy tylko wrogów blisko końca ścieżki (ostatnie 30% drogi)
+            if (enemy.pathDistance < 0.7 * this.map.path.length) return;
+
+            if (enemy.cx < viewLeft || enemy.cx > viewRight || enemy.cy < viewTop || enemy.cy > viewBottom) {
+              const dx = enemy.cx - cam.x;
+              const dy = enemy.cy - cam.y;
+              const angle = Math.atan2(dy, dx);
+
+              // Pozycja strzałki na krawędzi widoku
+              const edgeX = cam.x + Math.cos(angle) * (halfW * 0.9);
+              const edgeY = cam.y + Math.sin(angle) * (halfH * 0.9);
+
+              ctx.save();
+              ctx.translate(edgeX, edgeY);
+              ctx.rotate(angle);
+              ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+              ctx.beginPath();
+              ctx.moveTo(15, 0); ctx.lineTo(-10, -10); ctx.lineTo(-10, 10); ctx.closePath();
+              ctx.fill();
+
+              // Pulsowanie
+              if (Math.sin(this.time * 10) > 0) {
+                 ctx.strokeStyle = '#fff';
+                 ctx.lineWidth = 2;
+                 ctx.stroke();
+              }
+              ctx.restore();
+            }
+          });
         }
 
         drawRangeCircle(x, y, radius, color, fillAlpha, lineAlpha) {
@@ -14341,23 +14522,10 @@ loop(time) {
           if (!skill || skill.currentCd > 0) return;
 
           if (skill.id === 'meteor') {
-            // Antycypacja: Celownik i cień
-            this.particles.addEffect(new RingEffect(x, y, 4, 120, '#ff4500', 0.8, 0.8));
-            this.ui.showToast('Meteor nadlatuje...', 'warn');
-
-            setTimeout(() => {
-              if (this.paused) return; // Proste zabezpieczenie
-                this.groundEffects.push(new ScorchMark(this, x, y, 100));
-              this.particles.explosion(x, y, '#ff6a00', 50, 200);
-              this.flashScreen('rgba(255,80,0,0.4)', 0.4);
-              this.addShake(18);
-              this.enemies.forEach(enemy => {
-                if (!enemy.dead && distance(x, y, enemy.cx, enemy.cy) <= 130) {
-                  enemy.takeDamage(600, 'burn');
-                }
-              });
-              this.ui.showToast('Deszcz Ognia!', 'info');
-            }, 800);
+            // Antycypacja: Celownik i spadający pocisk
+            this.particles.addEffect(new RingEffect(x, y, 4, 120, '#ff4500', 1.0, 1.0));
+            this.ui.showToast('Meteor namierzony!', 'warn');
+            this.meteors.push(new FallingMeteor(this, x, y));
           } else if (skill.id === 'militia') {
             this.ui.showToast('Wysyłanie posiłków...', 'info');
             for (let i = 0; i < 3; i += 1) {
